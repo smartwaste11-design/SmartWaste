@@ -400,8 +400,6 @@ router.get('/detections/stats/summary', async (req, res) => {
   }
 });
 
-export default router;
-
 // GET all assigned tasks with populated worker details
 router.get('/assigned-tasks', async (req, res) => {
   try {
@@ -448,7 +446,7 @@ router.get('/assigned-tasks', async (req, res) => {
 router.put('/assigned-tasks/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
-    const validStatuses = ['Incomplete', 'In Progress', 'Completed'];
+    const validStatuses = ['Incomplete', 'Completed'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status' });
     }
@@ -460,3 +458,41 @@ router.put('/assigned-tasks/:id/status', async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// PUT mark task complete with verification screenshot
+router.put('/detections/:id/complete', async (req, res) => {
+  try {
+    const { imageData } = req.body;
+    if (!imageData) return res.status(400).json({ success: false, message: 'imageData is required' });
+
+    // Upload completion screenshot to Cloudinary
+    let completionImageUrl = null;
+    try {
+      const uploadResult = await cloudinary.uploader.upload(imageData, {
+        folder: 'waste-detection/completions',
+        resource_type: 'image',
+        public_id: `completion_${req.params.id}_${Date.now()}`,
+        transformation: [{ width: 1280, height: 720, crop: 'limit' }, { quality: 'auto:good' }]
+      });
+      completionImageUrl = uploadResult.secure_url;
+    } catch (uploadErr) {
+      console.error('Cloudinary upload failed for completion image:', uploadErr.message);
+      // Store base64 as fallback
+      completionImageUrl = imageData;
+    }
+
+    const updated = await Detection.findByIdAndUpdate(
+      req.params.id,
+      { status: 'Completed', completionImage: completionImageUrl, completedAt: new Date() },
+      { new: true }
+    );
+
+    if (!updated) return res.status(404).json({ success: false, message: 'Task not found' });
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Error completing task:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+export default router;

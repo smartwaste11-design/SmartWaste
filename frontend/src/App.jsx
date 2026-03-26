@@ -26,6 +26,7 @@ import Workerform from './workerform';
 import Worker from './worker';
 import Review from './review'
 import WasteDetectionONNX from "./components/WasteDetectionONNX";
+import { CameraProvider } from './CameraContext';
 
 function App() {
   const { user } = useUser();
@@ -44,6 +45,7 @@ function App() {
   }, [isAdmin]);
   return (
     <>
+      <CameraProvider>
       <Router>
         {isAdmin ? <AdminNavbar setIsAdmin={setIsAdmin} /> : <Navbar />}
 
@@ -74,6 +76,7 @@ function App() {
         <Footer />
         <ToastContainer />
       </Router>
+      </CameraProvider>
     </>
   )
 }

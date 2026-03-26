@@ -128,6 +128,16 @@ const detectionSchema = new mongoose.Schema({
     type: String,
     default: 'CAM1',
     description: "Camera identifier"
+  },
+  completionImage: {
+    type: String,
+    default: null,
+    description: "Cloudinary URL of screenshot taken when task was marked complete"
+  },
+  completedAt: {
+    type: Date,
+    default: null,
+    description: "Timestamp when task was marked as completed"
   }
 }, {
   timestamps: {

@@ -7,7 +7,8 @@ import DisplayAllWorkers from "./displayAllWorkers";
 import AdminCameraPage from "./AdminCameraPage";
 import TaskStatsPage from "./TaskStatsPage";
 import TaskAssignmentPage from "./TaskAssignmentPage";
-import { BarChart2, FileText, ShoppingBag, Map, Menu, X, HardHat, Camera, BarChart3, ClipboardList } from "lucide-react";
+import WorkerTaskPage from "./WorkerTaskPage";
+import { BarChart2, FileText, ShoppingBag, Map, Menu, X, HardHat, Camera, BarChart3, ClipboardList, CheckSquare } from "lucide-react";
 
 
 function Sidebar({ setActiveComponent }) {
@@ -21,7 +22,8 @@ function Sidebar({ setActiveComponent }) {
     { icon: HardHat, text: "Workers", component: "DisplayAllWorkers" },
     { icon: Camera, text: "Camera", component: "Camera" },
     { icon: BarChart3, text: "Task Stats", component: "TaskStats" },
-    { icon: ClipboardList, text: "Task Assignments", component: "TaskAssignments" }
+    { icon: ClipboardList, text: "Task Assignments", component: "TaskAssignments" },
+    { icon: CheckSquare, text: "Task Completion", component: "WorkerTasks" }
   ];
 
   const toggleSidebar = () => setIsOpen((prev) => !prev);
@@ -92,6 +94,7 @@ const AdminDashboard = () => {
           {activeComponent === "Camera" && <AdminCameraPage />}
           {activeComponent === "TaskStats" && <TaskStatsPage />}
           {activeComponent === "TaskAssignments" && <TaskAssignmentPage />}
+          {activeComponent === "WorkerTasks" && <WorkerTaskPage />}
         </main>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BarChart3, TrendingUp, CheckCircle2, Clock, AlertTriangle, Filter, Search, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { BarChart3, TrendingUp, CheckCircle2, Clock, AlertTriangle, Filter, ChevronDown, ChevronUp, X, Trash2 } from 'lucide-react';
 
 export default function TaskStatsPage() {
     const [stats, setStats] = useState(null);
@@ -69,9 +69,22 @@ export default function TaskStatsPage() {
         fetchTasks();
     }, [currentPage, filters, sortBy, sortOrder]);
 
-    const handleFilterChange = (key, value) => {
-        setFilters(prev => ({ ...prev, [key]: value }));
+    const handleFilterChange = (key, value) => {        setFilters(prev => ({ ...prev, [key]: value }));
         setCurrentPage(1);
+    };
+
+    const handleDelete = async (taskId) => {
+        if (!confirm('Delete this task? This cannot be undone.')) return;
+        try {
+            const res = await fetch(`http://localhost:5000/api/task/detections/${taskId}`, { method: 'DELETE' });
+            if (res.ok) {
+                setTasks(prev => prev.filter(t => t._id !== taskId));
+                if (selectedTask?._id === taskId) setSelectedTask(null);
+                fetchStats();
+            }
+        } catch (err) {
+            console.error('Delete failed:', err);
+        }
     };
 
     const clearFilters = () => {
@@ -346,12 +359,21 @@ export default function TaskStatsPage() {
                                             {new Date(task.createdAt).toLocaleDateString()}
                                         </td>
                                         <td className="px-4 py-3">
+                                            <div className="flex items-center gap-2">
                                             <button
                                                 onClick={() => setSelectedTask(task)}
                                                 className="text-[#1E8449] hover:text-[#27ae60] text-sm font-semibold"
                                             >
                                                 View
                                             </button>
+                                            <button
+                                                onClick={() => handleDelete(task._id)}
+                                                className="text-red-500 hover:text-red-400 transition-colors"
+                                                title="Delete task"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -391,12 +413,20 @@ export default function TaskStatsPage() {
                         <div className="p-6">
                             <div className="flex items-center justify-between mb-6">
                                 <h2 className="text-2xl font-bold">Task Details</h2>
-                                <button
-                                    onClick={() => setSelectedTask(null)}
-                                    className="text-gray-400 hover:text-white transition-colors"
-                                >
-                                    <X className="w-6 h-6" />
-                                </button>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => handleDelete(selectedTask._id)}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-lg text-sm transition-colors"
+                                    >
+                                        <Trash2 className="w-4 h-4" /> Delete
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedTask(null)}
+                                        className="text-gray-400 hover:text-white transition-colors"
+                                    >
+                                        <X className="w-6 h-6" />
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

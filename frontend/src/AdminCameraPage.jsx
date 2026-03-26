@@ -1,16 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as ort from 'onnxruntime-web';
 import { Camera, Activity, CheckCircle, Clock } from 'lucide-react';
+import { useCameraContext } from './CameraContext';
 
 export default function AdminCameraPage() {
+    const { cameraActive, startStream, stopStream, getStream } = useCameraContext();
     const [isLoading, setIsLoading] = useState(false);
     const [detections, setDetections] = useState([]);
     const [modelLoaded, setModelLoaded] = useState(false);
     const [error, setError] = useState(null);
-    const [stream, setStream] = useState(null);
-    const [cameraActive, setCameraActive] = useState(false);
-
-    const videoRef = useRef(null);
+    const videoRef = useRef(null); // local display video
     const canvasRef = useRef(null);
     const sessionRef = useRef(null);
     const animationFrameRef = useRef(null);
@@ -77,23 +76,15 @@ export default function AdminCameraPage() {
 
     const startCamera = async () => {
         try {
-            const mediaStream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    facingMode: 'environment',
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                }
-            });
-
-            setStream(mediaStream);
-            setCameraActive(true);
-
-            if (videoRef.current) {
-                videoRef.current.srcObject = mediaStream;
+            const stream = await startStream();
+            if (stream && videoRef.current) {
+                videoRef.current.srcObject = stream;
                 videoRef.current.onloadedmetadata = () => {
                     videoRef.current.play();
                     detectObjects();
                 };
+                // If already loaded
+                if (videoRef.current.readyState >= 2) detectObjects();
             }
         } catch (err) {
             console.error('Error accessing camera:', err);
@@ -102,14 +93,10 @@ export default function AdminCameraPage() {
     };
 
     const stopCamera = () => {
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-        }
+        stopStream();
         if (animationFrameRef.current) {
             cancelAnimationFrame(animationFrameRef.current);
         }
-        setStream(null);
-        setCameraActive(false);
         setDetections([]);
     };
 
@@ -513,18 +500,22 @@ export default function AdminCameraPage() {
 
     useEffect(() => {
         loadModel();
-        fetchTaskStats(); // Fetch initial stats
+        fetchTaskStats();
 
-        // Set up interval to refresh stats every 30 seconds
+        // If stream already running (e.g. navigated back), attach to display video
+        const existingStream = getStream();
+        if (existingStream && videoRef.current) {
+            videoRef.current.srcObject = existingStream;
+            videoRef.current.play().catch(() => {});
+        }
+
         const statsInterval = setInterval(fetchTaskStats, 30000);
 
         return () => {
             if (animationFrameRef.current) {
                 cancelAnimationFrame(animationFrameRef.current);
             }
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-            }
+            // Don't stop the stream — it's managed by CameraContext
             clearInterval(statsInterval);
         };
     }, []);

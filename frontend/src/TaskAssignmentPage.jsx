@@ -103,7 +103,7 @@ export default function TaskAssignmentPage() {
       <div className="flex flex-wrap gap-3 mb-6 items-center">
         <Filter className="w-4 h-4 text-gray-400" />
         {[
-          { key: 'status', options: ['Incomplete', 'In Progress', 'Completed'] },
+          { key: 'status', options: ['Incomplete', 'Completed'] },
           { key: 'department', options: ['cleaning', 'spill'] },
           { key: 'priority', options: ['High', 'Medium', 'Low'] },
           { key: 'severity', options: ['High', 'Medium', 'Low'] },
@@ -200,7 +200,6 @@ export default function TaskAssignmentPage() {
                         className="bg-gray-800 border border-gray-700 text-gray-300 text-xs rounded px-2 py-1 focus:outline-none focus:border-blue-500 disabled:opacity-50"
                       >
                         <option value="Incomplete">Incomplete</option>
-                        <option value="In Progress">In Progress</option>
                         <option value="Completed">Completed</option>
                       </select>
                     </td>
@@ -341,7 +340,7 @@ export default function TaskAssignmentPage() {
               <div>
                 <p className="text-gray-500 text-xs mb-2">Update Status</p>
                 <div className="flex gap-2">
-                  {['Incomplete', 'In Progress', 'Completed'].map(s => (
+                  {['Incomplete', 'Completed'].map(s => (
                     <button
                       key={s}
                       onClick={() => updateStatus(selectedTask._id, s)}

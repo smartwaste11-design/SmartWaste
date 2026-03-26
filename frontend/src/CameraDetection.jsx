@@ -416,15 +416,16 @@ export default function CameraDetection({ isOpen, onClose }) {
         const cleanImageData = canvas.toDataURL('image/jpeg', 0.8);
 
         let confirmed = false;
+        let groqResult = {};
         try {
             const verifyRes = await fetch('http://localhost:5000/api/task/verify-detection', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ imageData: cleanImageData, detectedClass: className, confidenceScore: confidence })
             });
-            const verifyResult = await verifyRes.json();
-            confirmed = verifyResult.confirmed === true;
-            console.log(`🤖 Groq: ${confirmed ? '✅ Confirmed' : '❌ Rejected'} - ${verifyResult.reason}`);
+            groqResult = await verifyRes.json();
+            confirmed = groqResult.confirmed === true;
+            console.log(`🤖 Groq: ${confirmed ? '✅ Confirmed' : '❌ Rejected'} | class=${groqResult.detectedClass} severity=${groqResult.severity} priority=${groqResult.priority} | ${groqResult.reason}`);
         } catch (err) {
             console.warn('Groq verification failed, falling back to YOLO result:', err.message);
             confirmed = true;
@@ -472,7 +473,7 @@ export default function CameraDetection({ isOpen, onClose }) {
         ]);
 
         setTaskStats(prev => ({ created: prev.created + 1, pending: prev.pending + 1 }));
-        await createTask({ ...detection, imageData: cleanImageData }, canvas);
+        await createTask({ ...detection, imageData: cleanImageData }, canvas, groqResult);
     };
 
     // Calculate severity based on detection size (matching app.py logic)
@@ -529,7 +530,7 @@ export default function CameraDetection({ isOpen, onClose }) {
     };
 
     // Create task in MongoDB (matching app.py structure)
-    const createTask = async (detection, canvas) => {
+    const createTask = async (detection, canvas, groqResult = {}) => {
         try {
             const { class: className, confidence, bbox, imageData: preCapuredImage } = detection;
 
@@ -566,7 +567,12 @@ export default function CameraDetection({ isOpen, onClose }) {
                 latitude: gps.latitude?.toString() || '',
                 longitude: gps.longitude?.toString() || '',
                 cameraId: 'CAM1',
-                imageData
+                imageData,
+                // AI-provided fields from Groq
+                aiDetectedClass: groqResult.detectedClass || null,
+                aiSeverity: groqResult.severity || null,
+                aiPriority: groqResult.priority || null,
+                aiDepartment: groqResult.department || null
             };
 
             console.log('Creating task (Groq verified)...');

@@ -432,13 +432,34 @@ export default function AdminCameraPage() {
                 return null;
             }
 
+            // Capture clean frame for Groq verification
+            const imageData = canvas.toDataURL('image/jpeg', 0.8);
+
+            // Verify with Groq AI before inserting into DB
+            let groqResult = {};
+            try {
+                const verifyRes = await fetch('http://localhost:5000/api/task/verify-detection', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ imageData, detectedClass: className, confidenceScore: confidence })
+                });
+                groqResult = await verifyRes.json();
+
+                if (!groqResult.confirmed) {
+                    console.log(`🤖 Groq rejected detection: ${groqResult.reason}`);
+                    return null;
+                }
+                console.log(`🤖 Groq confirmed | class=${groqResult.detectedClass} severity=${groqResult.severity} priority=${groqResult.priority} | ${groqResult.reason}`);
+            } catch (err) {
+                console.warn('Groq verification failed, skipping detection:', err.message);
+                return null;
+            }
+
             detectedSitesRef.current.add(key);
 
             const severity = calculateSeverity(bbox, canvas.width, canvas.height);
             const priority = calculatePriority(className, severity);
             const gps = await getGPSCoordinates();
-
-            const imageData = canvas.toDataURL('image/jpeg', 0.8);
 
             const x1 = bbox.x * canvas.width;
             const y1 = bbox.y * canvas.height;
@@ -457,22 +478,24 @@ export default function AdminCameraPage() {
                 latitude: gps.latitude?.toString() || '',
                 longitude: gps.longitude?.toString() || '',
                 cameraId: 'ADMIN_CAM',
-                imageData: imageData
+                imageData,
+                // AI-provided fields from Groq
+                aiDetectedClass: groqResult.detectedClass || null,
+                aiSeverity: groqResult.severity || null,
+                aiPriority: groqResult.priority || null,
+                aiDepartment: groqResult.department || null
             };
 
             const response = await fetch(`http://localhost:5000/api/task/detections`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(taskData)
             });
 
             const result = await response.json();
 
             if (result.success || response.ok) {
-                console.log(`✅ Task created successfully`);
-                // Refresh stats after creating a task
+                console.log(`✅ Task created successfully after Groq verification`);
                 fetchTaskStats();
                 return result;
             }

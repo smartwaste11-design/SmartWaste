@@ -7,7 +7,7 @@ const router = express.Router();
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-// VERIFY detection with Groq vision before creating task
+// VERIFY detection with Groq vision — also extracts class, priority, severity, department
 router.post('/verify-detection', async (req, res) => {
   try {
     const { imageData, detectedClass, confidenceScore } = req.body;
@@ -28,17 +28,29 @@ router.post('/verify-detection', async (req, res) => {
             },
             {
               type: 'text',
-              text: `A YOLO model detected "${detectedClass}" with ${(parseFloat(confidenceScore) * 100).toFixed(1)}% confidence in this image. 
-              
-              Verify: Is there actually visible waste, garbage, a bin, or liquid spill in this image?
-              
-              Reply with ONLY a JSON object in this exact format:
-              {"confirmed": true/false, "reason": "brief explanation", "wasteType": "garbage|bin|spills|none"}`
+              text: `A YOLO model detected "${detectedClass}" with ${(parseFloat(confidenceScore) * 100).toFixed(1)}% confidence in this image.
+
+Analyze the image carefully and respond with ONLY a JSON object in this exact format (no extra text):
+{
+  "confirmed": true or false,
+  "reason": "brief explanation",
+  "detectedClass": "garbage" or "bin" or "spills" or "none",
+  "severity": "High" or "Medium" or "Low",
+  "priority": "High" or "Medium" or "Low",
+  "department": "cleaning" or "spill"
+}
+
+Rules:
+- confirmed: true only if waste, garbage, a bin, or a liquid spill is clearly visible
+- detectedClass: the most accurate class based on what you see (garbage=loose trash/litter, bin=waste container, spills=liquid spill)
+- severity: High if waste covers >20% of frame, Medium if 10-20%, Low if <10%
+- priority: High for spills (hazardous), Medium for garbage, Low for bin
+- department: "spill" only for liquid spills, "cleaning" for everything else`
             }
           ]
         }
       ],
-      max_tokens: 150,
+      max_tokens: 200,
       temperature: 0.1
     });
 
@@ -46,20 +58,28 @@ router.post('/verify-detection', async (req, res) => {
     let result;
 
     try {
-      // Extract JSON from response
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       result = jsonMatch ? JSON.parse(jsonMatch[0]) : { confirmed: false, reason: 'Could not parse response' };
     } catch {
       result = { confirmed: false, reason: 'Invalid response from AI' };
     }
 
-    console.log(`🤖 Groq verification for "${detectedClass}": ${result.confirmed ? '✅ Confirmed' : '❌ Rejected'} - ${result.reason}`);
+    // Validate and sanitize AI fields
+    const validClasses = ['bin', 'garbage', 'spills'];
+    const validLevels = ['High', 'Medium', 'Low'];
+    const validDepts = ['cleaning', 'spill'];
+
+    if (!validClasses.includes(result.detectedClass)) result.detectedClass = detectedClass;
+    if (!validLevels.includes(result.severity)) result.severity = 'Low';
+    if (!validLevels.includes(result.priority)) result.priority = 'Low';
+    if (!validDepts.includes(result.department)) result.department = 'cleaning';
+
+    console.log(`🤖 Groq for "${detectedClass}": ${result.confirmed ? '✅' : '❌'} | class=${result.detectedClass} severity=${result.severity} priority=${result.priority} dept=${result.department} | ${result.reason}`);
 
     res.json({ success: true, ...result });
 
   } catch (error) {
     console.error('❌ Groq verification error:', error.message);
-    // On Groq failure, default to allowing the detection through
     res.status(500).json({ success: false, error: error.message, confirmed: false });
   }
 });
@@ -100,7 +120,12 @@ router.post('/detections', async (req, res) => {
       latitude = null,
       longitude = null,
       cameraId = 'CAM1',
-      imageData // Base64 image data
+      imageData,
+      // AI-provided fields from Groq (override computed values when present)
+      aiDetectedClass,
+      aiSeverity,
+      aiPriority,
+      aiDepartment
     } = req.body;
 
     const centerX = (parseFloat(x1) + parseFloat(x2)) / 2;
@@ -110,9 +135,11 @@ router.post('/detections', async (req, res) => {
     const detectionSize = width * height;
     const coveragePercentage = (detectionSize / (frameHeight * frameWidth)) * 100;
 
-    const severity = calculateSeverity(width, height, frameHeight, frameWidth);
-    const priority = calculatePriority(detectedClass, severity);
-    const department = detectedClass.toLowerCase() !== "spills" ? "cleaning" : "spill";
+    // Use AI-provided values if available, otherwise fall back to computed
+    const finalClass = aiDetectedClass || detectedClass;
+    const severity = aiSeverity || calculateSeverity(width, height, frameHeight, frameWidth);
+    const priority = aiPriority || calculatePriority(finalClass, severity);
+    const department = aiDepartment || (finalClass.toLowerCase() !== "spills" ? "cleaning" : "spill");
     const location = `${cameraId}-${Math.round(centerX)}-${Math.round(centerY)}`;
 
     // Upload image to Cloudinary
@@ -154,9 +181,9 @@ router.post('/detections', async (req, res) => {
       assignedWorker: null,
       processing: false,
       status: "Incomplete",
-      description: `Detected ${detectedClass} with ${parseFloat(confidenceScore).toFixed(2)} confidence.`,
-      imagePath: imageUrl || `detection_${Date.now()}.jpg`, // Cloudinary URL or fallback
-      cloudinaryPublicId, // Store for potential deletion later
+      description: `Detected ${finalClass} with ${parseFloat(confidenceScore).toFixed(2)} confidence.${aiDetectedClass ? ' (AI verified)' : ''}`,
+      imagePath: imageUrl || `detection_${Date.now()}.jpg`,
+      cloudinaryPublicId,
       locationDetails: {
         x: centerX,
         y: centerY,
@@ -165,7 +192,7 @@ router.post('/detections', async (req, res) => {
         coveragePercentage
       },
       confidenceScore: parseFloat(confidenceScore),
-      detectedClass,
+      detectedClass: finalClass,
       cameraId
     };
 

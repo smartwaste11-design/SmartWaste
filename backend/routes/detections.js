@@ -1,5 +1,7 @@
 import express from 'express';
 import Detection from '../Models/Detection.js';
+import { Task } from '../taskModel.js';
+import Worker from '../Models/Worker.js';
 import cloudinary from '../config/cloudinary.js';
 import Groq from 'groq-sdk';
 
@@ -399,3 +401,62 @@ router.get('/detections/stats/summary', async (req, res) => {
 });
 
 export default router;
+
+// GET all assigned tasks with populated worker details
+router.get('/assigned-tasks', async (req, res) => {
+  try {
+    const {
+      status = '',
+      department = '',
+      priority = '',
+      severity = '',
+      page = 1,
+      limit = 20,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    const filter = { assigned: true };
+    if (status) filter.status = status;
+    if (department) filter.department = department;
+    if (priority) filter.priority = priority;
+    if (severity) filter.severity = severity;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+
+    const tasks = await Task.find(filter)
+      .populate('assignedWorker', 'firstName lastName email phone department shift location available emergencyResponder')
+      .sort(sort)
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Task.countDocuments(filter);
+
+    res.json({
+      success: true,
+      data: tasks,
+      pagination: { page: parseInt(page), limit: parseInt(limit), total, pages: Math.ceil(total / parseInt(limit)) }
+    });
+  } catch (error) {
+    console.error('Error fetching assigned tasks:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PUT update task status (for admin)
+router.put('/assigned-tasks/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body;
+    const validStatuses = ['Incomplete', 'In Progress', 'Completed'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status' });
+    }
+    const task = await Task.findByIdAndUpdate(req.params.id, { status }, { new: true })
+      .populate('assignedWorker', 'firstName lastName email phone department shift location');
+    if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
+    res.json({ success: true, data: task });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});

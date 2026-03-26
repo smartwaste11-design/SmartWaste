@@ -36,19 +36,17 @@ export const addWorker = async (req, res) => {
 
 export const updateWorker = async (req, res) => {
     try {
-        const { department, shift, location, available } = req.body;
-        const { id } = req.params; // Get ID from URL parameter
+        const { id } = req.params;
+        const allowedFields = ['firstName', 'lastName', 'email', 'phone', 'age', 'gender',
+            'department', 'shift', 'location', 'available', 'emergencyResponder',
+            'startDate', 'additionalDetails'];
+        const updateData = {};
+        allowedFields.forEach(field => {
+            if (req.body[field] !== undefined) updateData[field] = req.body[field];
+        });
 
-        const updatedWorker = await Worker.findByIdAndUpdate(
-            id, // Use req.params.id instead of req.body.id
-            { department, shift, location, available },
-            { new: true } // Return the updated document
-        );
-
-        if (!updatedWorker) {
-            return res.status(404).json({ message: "Worker not found" });
-        }
-
+        const updatedWorker = await Worker.findByIdAndUpdate(id, updateData, { new: true });
+        if (!updatedWorker) return res.status(404).json({ message: "Worker not found" });
         res.status(200).json(updatedWorker);
     } catch (error) {
         res.status(500).json({ message: error.message });

@@ -449,10 +449,14 @@ export default function AdminCameraPage() {
                     console.log(`🤖 Groq rejected detection: ${groqResult.reason}`);
                     return null;
                 }
-                console.log(`🤖 Groq confirmed | class=${groqResult.detectedClass} severity=${groqResult.severity} priority=${groqResult.priority} | ${groqResult.reason}`);
+                if (groqResult.groqUnavailable) {
+                    console.log(`⚠️ Groq unavailable — using YOLO result directly: ${groqResult.reason}`);
+                } else {
+                    console.log(`🤖 Groq confirmed | class=${groqResult.detectedClass} severity=${groqResult.severity} priority=${groqResult.priority} | ${groqResult.reason}`);
+                }
             } catch (err) {
-                console.warn('Groq verification failed, skipping detection:', err.message);
-                return null;
+                console.warn('Groq verification request failed, using YOLO result:', err.message);
+                groqResult = { confirmed: true, groqUnavailable: true };
             }
 
             detectedSitesRef.current.add(key);
@@ -479,11 +483,13 @@ export default function AdminCameraPage() {
                 longitude: gps.longitude?.toString() || '',
                 cameraId: 'ADMIN_CAM',
                 imageData,
-                // AI-provided fields from Groq
-                aiDetectedClass: groqResult.detectedClass || null,
-                aiSeverity: groqResult.severity || null,
-                aiPriority: groqResult.priority || null,
-                aiDepartment: groqResult.department || null
+                // AI-provided fields from Groq (omitted when Groq is unavailable — backend uses computed values)
+                ...(!groqResult.groqUnavailable && {
+                    aiDetectedClass: groqResult.detectedClass || null,
+                    aiSeverity: groqResult.severity || null,
+                    aiPriority: groqResult.priority || null,
+                    aiDepartment: groqResult.department || null
+                })
             };
 
             const response = await fetch(`http://localhost:5000/api/task/detections`, {

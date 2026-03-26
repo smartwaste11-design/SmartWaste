@@ -425,10 +425,15 @@ export default function CameraDetection({ isOpen, onClose }) {
             });
             groqResult = await verifyRes.json();
             confirmed = groqResult.confirmed === true;
-            console.log(`🤖 Groq: ${confirmed ? '✅ Confirmed' : '❌ Rejected'} | class=${groqResult.detectedClass} severity=${groqResult.severity} priority=${groqResult.priority} | ${groqResult.reason}`);
+            if (groqResult.groqUnavailable) {
+                console.log(`⚠️ Groq unavailable — using YOLO result directly: ${groqResult.reason}`);
+            } else {
+                console.log(`🤖 Groq: ${confirmed ? '✅ Confirmed' : '❌ Rejected'} | class=${groqResult.detectedClass} severity=${groqResult.severity} priority=${groqResult.priority} | ${groqResult.reason}`);
+            }
         } catch (err) {
-            console.warn('Groq verification failed, falling back to YOLO result:', err.message);
+            console.warn('Groq verification request failed, using YOLO result:', err.message);
             confirmed = true;
+            groqResult = { groqUnavailable: true };
         }
 
         if (!confirmed) return;
@@ -568,13 +573,14 @@ export default function CameraDetection({ isOpen, onClose }) {
                 longitude: gps.longitude?.toString() || '',
                 cameraId: 'CAM1',
                 imageData,
-                // AI-provided fields from Groq
-                aiDetectedClass: groqResult.detectedClass || null,
-                aiSeverity: groqResult.severity || null,
-                aiPriority: groqResult.priority || null,
-                aiDepartment: groqResult.department || null
+                // AI-provided fields from Groq (omitted when Groq is unavailable — backend uses computed values)
+                ...(!groqResult.groqUnavailable && {
+                    aiDetectedClass: groqResult.detectedClass || null,
+                    aiSeverity: groqResult.severity || null,
+                    aiPriority: groqResult.priority || null,
+                    aiDepartment: groqResult.department || null
+                })
             };
-
             console.log('Creating task (Groq verified)...');
 
             const response = await fetch(`http://localhost:5000/api/task/detections`, {

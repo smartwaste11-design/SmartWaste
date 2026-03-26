@@ -5,18 +5,25 @@ import Groq from 'groq-sdk';
 
 const router = express.Router();
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+// Only init Groq client if API key is present
+const groqClient = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
 
 // VERIFY detection with Groq vision — also extracts class, priority, severity, department
 router.post('/verify-detection', async (req, res) => {
+  const { imageData, detectedClass, confidenceScore } = req.body;
+
+  if (!imageData) {
+    return res.status(400).json({ success: false, error: 'imageData is required' });
+  }
+
+  // If Groq is not configured, fall back to YOLO result immediately
+  if (!groqClient) {
+    console.log('⚠️ GROQ_API_KEY not set — skipping AI verification, using YOLO result');
+    return res.json({ success: true, confirmed: true, groqUnavailable: true, reason: 'Groq not configured' });
+  }
+
   try {
-    const { imageData, detectedClass, confidenceScore } = req.body;
-
-    if (!imageData) {
-      return res.status(400).json({ success: false, error: 'imageData is required' });
-    }
-
-    const chat = await groq.chat.completions.create({
+    const chat = await groqClient.chat.completions.create({
       model: 'meta-llama/llama-4-scout-17b-16e-instruct',
       messages: [
         {
@@ -59,9 +66,14 @@ Rules:
 
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
-      result = jsonMatch ? JSON.parse(jsonMatch[0]) : { confirmed: false, reason: 'Could not parse response' };
+      result = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
     } catch {
-      result = { confirmed: false, reason: 'Invalid response from AI' };
+      result = null;
+    }
+
+    if (!result) {
+      console.warn('⚠️ Groq returned unparseable response — falling back to YOLO result');
+      return res.json({ success: true, confirmed: true, groqUnavailable: true, reason: 'Could not parse AI response' });
     }
 
     // Validate and sanitize AI fields
@@ -76,11 +88,12 @@ Rules:
 
     console.log(`🤖 Groq for "${detectedClass}": ${result.confirmed ? '✅' : '❌'} | class=${result.detectedClass} severity=${result.severity} priority=${result.priority} dept=${result.department} | ${result.reason}`);
 
-    res.json({ success: true, ...result });
+    return res.json({ success: true, ...result });
 
   } catch (error) {
-    console.error('❌ Groq verification error:', error.message);
-    res.status(500).json({ success: false, error: error.message, confirmed: false });
+    // Any Groq error (quota exceeded, network, invalid key, etc.) — fall back gracefully
+    console.warn(`⚠️ Groq unavailable (${error.message}) — falling back to YOLO result`);
+    return res.json({ success: true, confirmed: true, groqUnavailable: true, reason: `Groq error: ${error.message}` });
   }
 });
 

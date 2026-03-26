@@ -48,7 +48,7 @@ export default function hero() {
                 environments cleaner and operations more efficient.
               </p>
               <div className="flex flex-wrap gap-4">
-                <button
+                {/* <button
                   onClick={() => setIsCameraOpen(true)}
                   className="px-6 py-3 bg-[#F39C12] hover:bg-[#F39C12]/90 text-white font-medium rounded-md transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1 flex items-center gap-2"
                 >
@@ -73,7 +73,7 @@ export default function hero() {
                     />
                   </svg>
                   Open Camera
-                </button>
+                </button> */}
                 <a
                   href="#map-interface"
                   className="px-6 py-3 bg-[#1E8449] hover:bg-[#1E8449]/90 text-white font-medium rounded-md transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1 animate__animated animate__pulse animate__infinite animate__slower"

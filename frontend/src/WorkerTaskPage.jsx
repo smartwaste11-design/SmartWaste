@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useCameraContext } from './CameraContext';
 
-const API = 'http://localhost:5000/api/task';
+const API = 'https://smartwaste-w8w7.onrender.com/api/task';
 
 const STATUS_COLORS = {
   'Incomplete': 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',

@@ -116,7 +116,7 @@ export default function Map() {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await fetch('http://localhost:5000/api/location/get-location');
+      const response = await fetch('https://smartwaste-w8w7.onrender.com/api/location/get-location');
 
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);

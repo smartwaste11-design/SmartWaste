@@ -29,7 +29,7 @@ export default function AdminCameraPage() {
     // Fetch task statistics from database
     const fetchTaskStats = async () => {
         try {
-            const response = await fetch('http://localhost:5000/api/task/detections/stats/summary');
+            const response = await fetch('https://smartwaste-w8w7.onrender.com/api/task/detections/stats/summary');
             const result = await response.json();
 
             if (result.success && result.data.overall) {
@@ -425,7 +425,7 @@ export default function AdminCameraPage() {
             // Verify with Groq AI before inserting into DB
             let groqResult = {};
             try {
-                const verifyRes = await fetch('http://localhost:5000/api/task/verify-detection', {
+                const verifyRes = await fetch('https://smartwaste-w8w7.onrender.com/api/task/verify-detection', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ imageData, detectedClass: className, confidenceScore: confidence })
@@ -479,7 +479,7 @@ export default function AdminCameraPage() {
                 })
             };
 
-            const response = await fetch(`http://localhost:5000/api/task/detections`, {
+            const response = await fetch(`https://smartwaste-w8w7.onrender.com/api/task/detections`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(taskData)

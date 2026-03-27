@@ -21,6 +21,8 @@ function AutoCaptureOverlay({ task, onCapture, onCancel }) {
   const [countdown, setCountdown] = useState(3);
   const [snapshot, setSnapshot] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [rejected, setRejected] = useState(null); // rejection reason string
   const [noCameraWarning, setNoCameraWarning] = useState(false);
 
   useEffect(() => {
@@ -46,8 +48,10 @@ function AutoCaptureOverlay({ task, onCapture, onCancel }) {
 
   const confirm = async () => {
     setUploading(true);
-    await onCapture(snapshot);
+    setVerifying(true);
+    await onCapture(snapshot, setRejected);
     setUploading(false);
+    setVerifying(false);
   };
 
   const retake = () => {
@@ -55,6 +59,7 @@ function AutoCaptureOverlay({ task, onCapture, onCancel }) {
     setSnapshot(null);
     setCountdown(3);
     setNoCameraWarning(false);
+    setRejected(null);
   };
 
   return (
@@ -109,17 +114,38 @@ function AutoCaptureOverlay({ task, onCapture, onCancel }) {
               <div className="aspect-video rounded-xl overflow-hidden border border-green-500/30">
                 <img src={snapshot} alt="completion screenshot" className="w-full h-full object-cover" />
               </div>
+
+              {/* Rejection message */}
+              {rejected && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-sm">
+                  <p className="text-red-400 font-medium mb-1">AI Verification Failed</p>
+                  <p className="text-gray-400 text-xs">{rejected}</p>
+                  <p className="text-gray-500 text-xs mt-1">Please clean the area and retake the photo.</p>
+                </div>
+              )}
+
+              {/* Verifying state */}
+              {verifying && (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-3 flex items-center gap-3">
+                  <RefreshCw className="w-4 h-4 text-blue-400 animate-spin shrink-0" />
+                  <div>
+                    <p className="text-blue-400 text-sm font-medium">AI is analyzing before & after images...</p>
+                    <p className="text-gray-500 text-xs">Comparing with original detection</p>
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-3">
-                <button onClick={retake} className="flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
+                <button onClick={retake} disabled={verifying} className="flex-1 flex items-center justify-center gap-2 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-white py-2.5 rounded-xl text-sm font-medium transition-colors">
                   <RefreshCw className="w-4 h-4" /> Retake
                 </button>
                 <button
                   onClick={confirm}
-                  disabled={uploading}
+                  disabled={uploading || verifying}
                   className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white py-2.5 rounded-xl text-sm font-medium transition-colors"
                 >
-                  {uploading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                  {uploading ? 'Submitting...' : 'Confirm Complete'}
+                  {verifying ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  {verifying ? 'Verifying...' : 'Confirm Complete'}
                 </button>
               </div>
             </div>
@@ -251,7 +277,7 @@ export default function WorkerTaskPage() {
 
   useEffect(() => { fetchTasks(); }, [currentPage, statusFilter]);
 
-  const handleCapture = async (imageData) => {
+  const handleCapture = async (imageData, setRejected) => {
     try {
       const res = await fetch(`${API}/detections/${captureTask._id}/complete`, {
         method: 'PUT',
@@ -260,12 +286,14 @@ export default function WorkerTaskPage() {
       });
       const data = await res.json();
       if (data.success) {
-        showToast('Task marked as completed');
+        showToast('Task verified and marked as completed');
         setTasks(prev => prev.map(t => t._id === captureTask._id ? data.data : t));
         const completed = data.data;
         setCaptureTask(null);
-        // Auto-open comparison
         setCompareTask(completed);
+      } else if (res.status === 422) {
+        // AI rejected — show reason inside the overlay, don't close it
+        setRejected(data.reason || 'The area does not appear to be cleaned.');
       } else {
         showToast('Failed to complete task', 'error');
         setCaptureTask(null);

@@ -10,6 +10,11 @@ const router = express.Router();
 // Only init Groq client if API key is present
 const groqClient = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
 
+// Second Groq client for completion verification (separate key to distribute load)
+const groqVerifyClient = process.env.GROQ_API_KEY_2
+  ? new Groq({ apiKey: process.env.GROQ_API_KEY_2 })
+  : groqClient; // fallback to primary if secondary not set
+
 // VERIFY detection with Groq vision — also extracts class, priority, severity, department
 router.post('/verify-detection', async (req, res) => {
   const { imageData, detectedClass, confidenceScore } = req.body;
@@ -465,7 +470,103 @@ router.put('/detections/:id/complete', async (req, res) => {
     const { imageData } = req.body;
     if (!imageData) return res.status(400).json({ success: false, message: 'imageData is required' });
 
-    // Upload completion screenshot to Cloudinary
+    // Fetch the original task to get the before image
+    const task = await Detection.findById(req.params.id);
+    if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
+
+    // ── Groq before/after verification ──────────────────────────────────────
+    let verified = false;
+    let verificationReason = 'Groq verification unavailable';
+
+    if (groqVerifyClient && task.imagePath) {
+      try {
+        console.log('🔍 Running Groq before/after verification...');
+        const chat = await groqVerifyClient.chat.completions.create({
+          model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: `You are a waste management verification system. You will be shown two images:
+1. BEFORE image: A camera frame showing detected waste/spill (${task.detectedClass}, ${task.severity} severity)
+2. AFTER image: A screenshot taken by the worker claiming the task is complete
+
+Analyze both images and determine if the task has been genuinely resolved.
+
+Respond with ONLY a JSON object in this exact format (no extra text):
+{
+  "verified": true or false,
+  "confidence": 0.0 to 1.0,
+  "reason": "brief explanation of what you see in both images"
+}
+
+Rules:
+- verified: true only if the waste/spill is clearly cleaned up or significantly reduced in the AFTER image
+- verified: true also if the AFTER image shows a clean area matching the location
+- verified: false if the AFTER image looks identical to BEFORE, or still shows significant waste
+- verified: true if you cannot clearly compare (give benefit of the doubt) but note it in reason`
+                },
+                {
+                  type: 'text',
+                  text: 'BEFORE image (original detection):'
+                },
+                {
+                  type: 'image_url',
+                  image_url: { url: task.imagePath }
+                },
+                {
+                  type: 'text',
+                  text: 'AFTER image (worker completion screenshot):'
+                },
+                {
+                  type: 'image_url',
+                  image_url: { url: imageData }
+                }
+              ]
+            }
+          ],
+          max_tokens: 200,
+          temperature: 0.1
+        });
+
+        const content = chat.choices[0]?.message?.content?.trim();
+        const jsonMatch = content?.match(/\{[\s\S]*\}/);
+        const result = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+
+        if (result) {
+          verified = result.verified === true;
+          verificationReason = result.reason || 'No reason provided';
+          console.log(`🤖 Groq verification: ${verified ? '✅ Verified' : '❌ Rejected'} | ${verificationReason}`);
+        } else {
+          // Unparseable response — give benefit of the doubt
+          verified = true;
+          verificationReason = 'Could not parse AI response — marked complete by default';
+          console.warn('⚠️ Groq returned unparseable response, defaulting to verified');
+        }
+      } catch (groqErr) {
+        // Groq failed — don't block completion, just log
+        verified = true;
+        verificationReason = `Groq verification failed (${groqErr.message}) — marked complete by default`;
+        console.error('⚠️ Groq verification error:', groqErr.message);
+      }
+    } else {
+      // No Groq client or no before image — auto-approve
+      verified = true;
+      verificationReason = task.imagePath ? 'Groq client not configured' : 'No before image to compare';
+    }
+
+    if (!verified) {
+      return res.status(422).json({
+        success: false,
+        verified: false,
+        reason: verificationReason,
+        message: 'Task completion rejected by AI verification. The area does not appear to be cleaned.'
+      });
+    }
+
+    // ── Upload completion screenshot to Cloudinary ───────────────────────────
     let completionImageUrl = null;
     try {
       const uploadResult = await cloudinary.uploader.upload(imageData, {
@@ -477,7 +578,6 @@ router.put('/detections/:id/complete', async (req, res) => {
       completionImageUrl = uploadResult.secure_url;
     } catch (uploadErr) {
       console.error('Cloudinary upload failed for completion image:', uploadErr.message);
-      // Store base64 as fallback
       completionImageUrl = imageData;
     }
 
@@ -487,8 +587,12 @@ router.put('/detections/:id/complete', async (req, res) => {
       { new: true }
     );
 
-    if (!updated) return res.status(404).json({ success: false, message: 'Task not found' });
-    res.json({ success: true, data: updated });
+    res.json({
+      success: true,
+      verified: true,
+      verificationReason,
+      data: updated
+    });
   } catch (error) {
     console.error('Error completing task:', error);
     res.status(500).json({ success: false, error: error.message });

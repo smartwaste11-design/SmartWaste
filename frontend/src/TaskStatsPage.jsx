@@ -28,7 +28,7 @@ export default function TaskStatsPage() {
     // Fetch statistics
     const fetchStats = async () => {
         try {
-            const response = await fetch('https://smartwaste-w8w7.onrender.com/api/task/detections/stats/summary');
+            const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/task/detections/stats/summary`);
             const result = await response.json();
             if (result.success) {
                 setStats(result.data);
@@ -50,7 +50,7 @@ export default function TaskStatsPage() {
                 ...Object.fromEntries(Object.entries(filters).filter(([_, v]) => v !== ''))
             });
 
-            const response = await fetch(`https://smartwaste-w8w7.onrender.com/api/task/detections?${params}`);
+            const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/task/detections?${params}`);
             const result = await response.json();
 
             if (result.success) {
@@ -76,7 +76,7 @@ export default function TaskStatsPage() {
     const handleDelete = async (taskId) => {
         if (!confirm('Delete this task? This cannot be undone.')) return;
         try {
-            const res = await fetch(`https://smartwaste-w8w7.onrender.com/api/task/detections/${taskId}`, { method: 'DELETE' });
+            const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/task/detections/${taskId}`, { method: 'DELETE' });
             if (res.ok) {
                 setTasks(prev => prev.filter(t => t._id !== taskId));
                 if (selectedTask?._id === taskId) setSelectedTask(null);

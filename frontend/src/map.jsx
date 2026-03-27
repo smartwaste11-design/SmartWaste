@@ -116,7 +116,7 @@ export default function Map() {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await fetch('https://smartwaste-w8w7.onrender.com/api/location/get-location');
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/location/get-location`);
 
       if (!response.ok) {
         throw new Error(`HTTP error! Status: ${response.status}`);

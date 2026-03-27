@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useCameraContext } from './CameraContext';
 
-const API = 'https://smartwaste-w8w7.onrender.com/api/task';
+const API = `${import.meta.env.VITE_BACKEND_URL}/api/task`;
 
 const STATUS_COLORS = {
   'Incomplete': 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
@@ -120,7 +120,7 @@ function AutoCaptureOverlay({ task, onCapture, onCancel }) {
                 <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 text-sm">
                   <p className="text-red-400 font-medium mb-1">AI Verification Failed</p>
                   <p className="text-gray-400 text-xs">{rejected}</p>
-                  <p className="text-gray-500 text-xs mt-1">Please clean the area and retake the photo.</p>
+                  <p className="text-gray-500 text-xs mt-1">The photo still appears to show waste. Please ensure the area is cleaned and retake the photo.</p>
                 </div>
               )}
 

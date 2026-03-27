@@ -10,7 +10,7 @@ import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import L from 'leaflet';
 
 
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = `${import.meta.env.VITE_BACKEND_URL}/api/`;
 
 
 const redIcon = L.icon({

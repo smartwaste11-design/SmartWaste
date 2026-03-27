@@ -158,7 +158,7 @@ function WorkerModal({ title, worker, onChange, onSubmit, onClose, submitLabel }
 }
 
 const DisplayAllWorkers = () => {
-  const url = import.meta.env.VITE_API_URL;
+  const url = `${import.meta.env.VITE_BACKEND_URL}/api/`;
   const [workers, setWorkers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

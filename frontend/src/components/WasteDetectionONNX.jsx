@@ -10,7 +10,7 @@ function WasteDetectionExactSchema() {
   const [modelInfo, setModelInfo] = useState(null);
   const [detectedSites, setDetectedSites] = useState(new Set());
   const [dbStats, setDbStats] = useState({ total: 0, recent: 0, pending: 0 });
-  const [apiEndpoint] = useState('https://smartwaste-w8w7.onrender.com/api/task');
+  const [apiEndpoint] = useState(`${import.meta.env.VITE_BACKEND_URL}/api/task`);
   const [tasks, setTasks] = useState([]);
   const detectionLoopRef = useRef(null);
 

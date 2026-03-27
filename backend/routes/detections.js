@@ -489,24 +489,25 @@ router.put('/detections/:id/complete', async (req, res) => {
               content: [
                 {
                   type: 'text',
-                  text: `You are a waste management verification system. You will be shown two images:
-1. BEFORE image: A camera frame showing detected waste/spill (${task.detectedClass}, ${task.severity} severity)
-2. AFTER image: A screenshot taken by the worker claiming the task is complete
+                  text: `You are a waste management task verification system. A worker has submitted an AFTER image to mark a cleanup task as complete.
 
-Analyze both images and determine if the task has been genuinely resolved.
+BEFORE image: shows the original detected waste/spill (${task.detectedClass}, ${task.severity} severity).
+AFTER image: submitted by the worker as proof of completion.
+
+Your ONLY job is to check the AFTER image for the presence of waste or spills.
 
 Respond with ONLY a JSON object in this exact format (no extra text):
 {
   "verified": true or false,
   "confidence": 0.0 to 1.0,
-  "reason": "brief explanation of what you see in both images"
+  "reason": "brief explanation of what you see in the AFTER image"
 }
 
 Rules:
-- verified: true only if the waste/spill is clearly cleaned up or significantly reduced in the AFTER image
-- verified: true also if the AFTER image shows a clean area matching the location
-- verified: false if the AFTER image looks identical to BEFORE, or still shows significant waste
-- verified: true if you cannot clearly compare (give benefit of the doubt) but note it in reason`
+- verified: true if the AFTER image does NOT clearly show active waste, garbage, or spills (e.g. clean area, dustbin, person, blank/dark screen, indoor scene, any non-waste scene)
+- verified: false ONLY if the AFTER image clearly and obviously still shows the same unresolved waste or spill
+- Do NOT compare scenes or locations between BEFORE and AFTER — they may look completely different
+- Give benefit of the doubt: if unsure, set verified: true`
                 },
                 {
                   type: 'text',

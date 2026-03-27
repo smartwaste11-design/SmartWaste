@@ -4,7 +4,7 @@ import {
   CheckCircle2, Clock, AlertTriangle, X, Phone, Mail, MapPin, Briefcase
 } from 'lucide-react';
 
-const API = 'https://smartwaste-w8w7.onrender.com/api/task';
+const API = `${import.meta.env.VITE_BACKEND_URL}/api/task`;
 
 const STATUS_COLORS = {
   'Incomplete': 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',

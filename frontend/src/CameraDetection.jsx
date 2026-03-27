@@ -418,7 +418,7 @@ export default function CameraDetection({ isOpen, onClose }) {
         let confirmed = false;
         let groqResult = {};
         try {
-            const verifyRes = await fetch('https://smartwaste-w8w7.onrender.com/api/task/verify-detection', {
+            const verifyRes = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/task/verify-detection`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ imageData: cleanImageData, detectedClass: className, confidenceScore: confidence })
@@ -583,7 +583,7 @@ export default function CameraDetection({ isOpen, onClose }) {
             };
             console.log('Creating task (Groq verified)...');
 
-            const response = await fetch(`https://smartwaste-w8w7.onrender.com/api/task/detections`, {
+            const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/task/detections`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(taskData)

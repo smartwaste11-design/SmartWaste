@@ -209,7 +209,7 @@ export default function Report() {
       setLoading(true);
       console.log("Fetching reports with token:", token.substring(0, 10) + "...");
 
-      const response = await axios.get("https://smartwaste-w8w7.onrender.com/api/reports/user", {
+      const response = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/reports/user`, {
         headers: { Authorization: `Bearer ${token}` },
         timeout: 10000 // Set a timeout of 10 seconds
       });
@@ -277,7 +277,7 @@ export default function Report() {
       const authToken = await getToken();
 
       const response = await axios.post(
-        'https://smartwaste-w8w7.onrender.com/api/reports',
+        `${import.meta.env.VITE_BACKEND_URL}/api/reports`,
         formData,
         {
           headers: {
@@ -512,7 +512,7 @@ export default function Report() {
     const fetchReports = async () => {
       try {
         setLoading(true);
-        const response = await axios.get("https://smartwaste-w8w7.onrender.com/api/reports/user", {
+        const response = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/api/reports/user`, {
           headers: { Authorization: `Bearer ${token}` },
         });
 

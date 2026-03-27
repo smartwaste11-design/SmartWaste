@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 
 export default function WorkerForm() {
-  const url = import.meta.env.VITE_API_URL;
+  const url = `${import.meta.env.VITE_BACKEND_URL}/api/`;
   
   const [formData, setFormData] = useState({
     firstName: '',

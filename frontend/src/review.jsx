@@ -20,7 +20,7 @@ const ReviewDashboard = () => {
 
         // Fetch all reviews
         const reviewsResponse = await axios.get(
-          "https://smartwaste-w8w7.onrender.com/api/reviews"
+          `${import.meta.env.VITE_BACKEND_URL}/api/reviews`
         );
 
         setReviews(reviewsResponse.data);
@@ -57,7 +57,7 @@ const ReviewDashboard = () => {
       setIsSubmitting(true);
 
       const response = await axios.post(
-        "https://smartwaste-w8w7.onrender.com/api/reviews/add",
+        `${import.meta.env.VITE_BACKEND_URL}/api/reviews/add`,
         {
           clerkId: user.id,
           reviewText: review,

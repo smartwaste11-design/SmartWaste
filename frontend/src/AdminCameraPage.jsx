@@ -500,6 +500,25 @@ export default function AdminCameraPage() {
 
     // Track whether we're returning to an already-active stream
     const pendingDetectionRef = useRef(false);
+    const snapshotIntervalRef = useRef(null);
+
+    // Push a frame to the backend every 3 seconds so worker completion can use it
+    const pushSnapshot = () => {
+        if (!videoRef.current || !canvasRef.current) return;
+        const video = videoRef.current;
+        if (!video.srcObject || video.readyState < 2) return;
+
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width || video.videoWidth, canvas.height || video.videoHeight);
+        const imageData = canvas.toDataURL('image/jpeg', 0.7);
+
+        fetch(`${import.meta.env.VITE_BACKEND_URL}/api/camera/snapshot`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageData, cameraId: 'ADMIN_CAM' })
+        }).catch(() => {}); // silent — don't disrupt detection loop
+    };
 
     useEffect(() => {
         loadModel();
@@ -515,12 +534,16 @@ export default function AdminCameraPage() {
 
         const statsInterval = setInterval(fetchTaskStats, 30000);
 
+        // Push snapshot every 3 seconds for worker completion verification
+        snapshotIntervalRef.current = setInterval(pushSnapshot, 3000);
+
         return () => {
             if (animationFrameRef.current) {
                 cancelAnimationFrame(animationFrameRef.current);
             }
             // Don't stop the stream — it's managed by CameraContext
             clearInterval(statsInterval);
+            clearInterval(snapshotIntervalRef.current);
         };
     }, []);
 

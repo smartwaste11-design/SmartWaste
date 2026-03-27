@@ -185,17 +185,25 @@
     .ai-result.fail    .ai-title { color: #f87171; }
     .ai-result .ai-reason { font-size: 0.78rem; color: #94a3b8; }
 
-    /* spinner */
     .spinner {
-      width: 36px; height: 36px;
+      width: 24px; height: 24px; flex-shrink: 0;
       border: 3px solid #334155; border-top-color: #7c3aed;
       border-radius: 50%; animation: spin 0.8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-
     .modal-actions { display: flex; gap: 10px; flex-wrap: wrap; }
     .btn-full { flex: 1; padding: 10px; font-size: 0.85rem; }
     .btn-cancel { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+    .cam-status {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 0.75rem; padding: 4px 12px; border-radius: 20px; margin-bottom: 14px;
+    }
+    .cam-status.online  { background: #14532d33; color: #4ade80; border: 1px solid #166534; }
+    .cam-status.offline { background: #7f1d1d33; color: #f87171; border: 1px solid #991b1b; }
+    .cam-status .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    .cam-status.online  .dot { background: #4ade80; animation: pulse 1.5s infinite; }
+    .cam-status.offline .dot { background: #f87171; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
     /* toast */
     #toast {
@@ -258,29 +266,20 @@
     <div class="modal-body">
 
       <div class="steps">
-        <div class="step active" id="step1">1. Camera</div>
-        <div class="step" id="step2">2. Screenshot</div>
-        <div class="step" id="step3">3. AI Check</div>
-        <div class="step" id="step4">4. Done</div>
+        <div class="step active" id="step1">1. Capture</div>
+        <div class="step" id="step2">2. AI Check</div>
+        <div class="step" id="step3">3. Done</div>
       </div>
 
-      <!-- Camera view -->
-      <div class="cam-wrap" id="camWrap">
-        <video id="camVideo" autoplay playsinline muted></video>
-        <div class="cam-overlay" id="camOverlay">
-          <div class="icon">📷</div>
-          <div>Starting camera…</div>
-        </div>
-        <div class="countdown-ring hidden" id="countdownRing">
-          <div class="countdown-num" id="countdownNum"></div>
-        </div>
-        <div class="flash" id="flashEl"></div>
+      <!-- Admin camera status -->
+      <div id="camStatusPill" class="cam-status offline">
+        <div class="dot"></div>
+        <span id="camStatusText">Checking admin camera…</span>
       </div>
-      <canvas id="snapCanvas"></canvas>
 
-      <!-- Snapshot preview -->
+      <!-- Snapshot preview (shown after capture) -->
       <div class="snap-preview" id="snapPreview">
-        <div class="snap-label">📸 Captured screenshot</div>
+        <div class="snap-label">📷 Admin camera snapshot used for verification</div>
         <img id="snapImg" src="" alt="snapshot" />
       </div>
 
@@ -311,22 +310,17 @@
 
   let allTasks = [];
   let activeTaskId = null;
-  let camStream = null;
-  let countdownTimer = null;
 
   // ── Load tasks ──────────────────────────────────────────────────────────────
   async function loadTasks() {
     document.getElementById('taskList').innerHTML = '<div class="loading">Loading tasks…</div>';
     try {
-      const url = workerId
-        ? `${API}/api/tasks/worker/${workerId}`
-        : `${API}/api/tasks`;
+      const url = workerId ? `${API}/api/tasks/worker/${workerId}` : `${API}/api/tasks`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const data = await res.json();
       allTasks = Array.isArray(data) ? data : (data.tasks || []);
-      updateStats();
-      renderTasks();
+      updateStats(); renderTasks();
     } catch (err) {
       document.getElementById('taskList').innerHTML =
         `<div class="empty"><div class="icon">⚠️</div>${err.message}</div>`;
@@ -358,9 +352,9 @@
 
   function statusBadge(s) {
     const map = {
-      'Incomplete': ['badge-incomplete', 'Incomplete'],
-      'In Progress': ['badge-inprogress', 'In Progress'],
-      'Completed':   ['badge-completed',  'Completed'],
+      'Incomplete': ['badge-incomplete','Incomplete'],
+      'In Progress': ['badge-inprogress','In Progress'],
+      'Completed':   ['badge-completed', 'Completed'],
     };
     const [cls, lbl] = map[s] || ['badge-incomplete', s];
     return `<span class="badge ${cls}">${lbl}</span>`;
@@ -368,7 +362,7 @@
 
   function priorityBadge(p) {
     if (!p) return '';
-    const cls = { High: 'badge-high', Medium: 'badge-medium', Low: 'badge-low' }[p] || 'badge-low';
+    const cls = { High:'badge-high', Medium:'badge-medium', Low:'badge-low' }[p] || 'badge-low';
     return `<span class="badge ${cls}">${p}</span>`;
   }
 
@@ -376,41 +370,34 @@
     const id = t._id || t.id;
     const date = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '—';
     const isCompleted = t.status === 'Completed';
-
     let actions = '';
-    if (t.status === 'Incomplete') {
+    if (t.status === 'Incomplete')
       actions += `<button class="btn btn-start" onclick="startTask('${id}')">▶ Start</button>`;
-    }
-    if (t.status === 'In Progress') {
+    if (t.status === 'In Progress')
       actions += `<button class="btn btn-verify" onclick="openVerify('${id}')">🤖 Verify & Complete</button>`;
-    }
 
     const beforeImg = t.imagePath
       ? `<div class="before-img">
            <div class="before-img-label">📷 Detection image</div>
            <img src="${t.imagePath}" alt="detection" loading="lazy" onerror="this.parentElement.style.display='none'" />
-         </div>`
-      : '';
+         </div>` : '';
 
     return `
-    <div class="task-card${isCompleted ? ' completed' : ''}" id="card-${id}">
+    <div class="task-card${isCompleted?' completed':''}" id="card-${id}">
       <div class="task-top">
         <div>
-          <div class="task-title">${t.detectedClass ? t.detectedClass.charAt(0).toUpperCase()+t.detectedClass.slice(1) : 'Task'} — ${t.department || ''}</div>
-          <div class="task-desc">${t.description || ''}</div>
+          <div class="task-title">${t.detectedClass ? t.detectedClass.charAt(0).toUpperCase()+t.detectedClass.slice(1) : 'Task'} — ${t.department||''}</div>
+          <div class="task-desc">${t.description||''}</div>
         </div>
-        <div class="badges">
-          ${statusBadge(t.status)}
-          ${priorityBadge(t.priority)}
-        </div>
+        <div class="badges">${statusBadge(t.status)}${priorityBadge(t.priority)}</div>
       </div>
       ${beforeImg}
       <div class="task-meta">
-        <span>📍 ${t.location || '—'}</span>
+        <span>📍 ${t.location||'—'}</span>
         <span>📅 ${date}</span>
-        ${t.severity ? `<span>⚡ ${t.severity}</span>` : ''}
-        ${t.cameraId ? `<span>📹 ${t.cameraId}</span>` : ''}
-        ${t.confidenceScore ? `<span>🎯 ${(t.confidenceScore*100).toFixed(0)}%</span>` : ''}
+        ${t.severity?`<span>⚡ ${t.severity}</span>`:''}
+        ${t.cameraId?`<span>📹 ${t.cameraId}</span>`:''}
+        ${t.confidenceScore?`<span>🎯 ${(t.confidenceScore*100).toFixed(0)}%</span>`:''}
       </div>
       <div class="task-actions">${actions}</div>
     </div>`;
@@ -419,8 +406,7 @@
   async function startTask(id) {
     try {
       const res = await fetch(`${API}/api/tasks/${id}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ status: 'In Progress' })
       });
       if (!res.ok) throw new Error('Failed');
@@ -432,16 +418,14 @@
   }
 
   // ── Verify Modal ────────────────────────────────────────────────────────────
-  function openVerify(taskId) {
+  async function openVerify(taskId) {
     activeTaskId = taskId;
     resetModal();
     document.getElementById('verifyModal').classList.remove('hidden');
-    startCameraAndCountdown();
+    await checkCameraAndVerify();
   }
 
   function closeModal() {
-    clearCountdown();
-    stopCamera();
     document.getElementById('verifyModal').classList.add('hidden');
     activeTaskId = null;
   }
@@ -450,124 +434,92 @@
     setStep(1);
     document.getElementById('snapPreview').style.display = 'none';
     document.getElementById('aiResult').style.display = 'none';
-    document.getElementById('camWrap').style.display = 'block';
-    document.getElementById('camOverlay').classList.remove('hidden');
-    document.getElementById('camOverlay').innerHTML = '<div class="icon">📷</div><div>Starting camera…</div>';
-    document.getElementById('countdownRing').classList.add('hidden');
-    document.getElementById('flashEl').classList.remove('on');
+    document.getElementById('camStatusPill').className = 'cam-status offline';
+    document.getElementById('camStatusText').textContent = 'Checking admin camera…';
     document.getElementById('modalActions').innerHTML =
       `<button class="btn btn-cancel btn-full" onclick="closeModal()">Cancel</button>`;
   }
 
   function setStep(n) {
-    [1,2,3,4].forEach(i => {
+    [1,2,3].forEach(i => {
       const el = document.getElementById(`step${i}`);
       el.className = 'step' + (i < n ? ' done' : i === n ? ' active' : '');
     });
   }
 
-  function clearCountdown() {
-    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
-  }
-
-  async function startCameraAndCountdown() {
+  async function checkCameraAndVerify() {
+    // Step 1: check admin camera status
     try {
-      camStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-      });
-      const video = document.getElementById('camVideo');
-      video.srcObject = camStream;
+      const statusRes = await fetch(`${API}/api/camera/status`);
+      const status = await statusRes.json();
 
-      await new Promise(resolve => { video.onloadedmetadata = () => { video.play(); resolve(); }; });
+      const pill = document.getElementById('camStatusPill');
+      const pillText = document.getElementById('camStatusText');
 
-      // Camera ready — hide overlay, start 3-second countdown
-      document.getElementById('camOverlay').classList.add('hidden');
-      startCountdown(3);
-    } catch (err) {
-      document.getElementById('camOverlay').innerHTML =
-        `<div class="icon">⚠️</div><div>Camera access denied.<br>Please allow camera permissions.</div>`;
-    }
-  }
-
-  function startCountdown(seconds) {
-    const ring = document.getElementById('countdownRing');
-    const num  = document.getElementById('countdownNum');
-    ring.classList.remove('hidden');
-    num.textContent = seconds;
-
-    // Force re-trigger animation on each tick
-    let remaining = seconds;
-    countdownTimer = setInterval(() => {
-      remaining--;
-      if (remaining <= 0) {
-        clearCountdown();
-        ring.classList.add('hidden');
-        captureAndVerify();
-      } else {
-        // Re-trigger pop animation
-        num.style.animation = 'none';
-        num.offsetHeight; // reflow
-        num.style.animation = '';
-        num.textContent = remaining;
+      if (!status.online) {
+        pill.className = 'cam-status offline';
+        pillText.textContent = 'Admin camera offline — cannot verify';
+        document.getElementById('modalActions').innerHTML = `
+          <button class="btn btn-verify btn-full" onclick="checkCameraAndVerify()">🔄 Retry</button>
+          <button class="btn btn-cancel btn-full" onclick="closeModal()">Cancel</button>`;
+        return;
       }
-    }, 1000);
-  }
 
-  function stopCamera() {
-    if (camStream) {
-      camStream.getTracks().forEach(t => t.stop());
-      camStream = null;
+      pill.className = 'cam-status online';
+      pillText.textContent = `Admin camera live (${status.ageSeconds}s ago) — capturing…`;
+
+      // Step 2: run verification (backend grabs latest snapshot automatically)
+      setStep(2);
+      document.getElementById('modalActions').innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 0">
+          <div class="spinner"></div>
+          <span style="color:#94a3b8;font-size:0.85rem">AI is verifying using admin camera…</span>
+        </div>`;
+
+      await runAIVerification();
+
+    } catch (err) {
+      document.getElementById('camStatusPill').className = 'cam-status offline';
+      document.getElementById('camStatusText').textContent = 'Could not reach backend';
+      document.getElementById('modalActions').innerHTML = `
+        <button class="btn btn-verify btn-full" onclick="checkCameraAndVerify()">🔄 Retry</button>
+        <button class="btn btn-cancel btn-full" onclick="closeModal()">Cancel</button>`;
     }
   }
 
-  function captureAndVerify() {
-    const video  = document.getElementById('camVideo');
-    const canvas = document.getElementById('snapCanvas');
-    canvas.width  = video.videoWidth  || 640;
-    canvas.height = video.videoHeight || 480;
-    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    const imageData = canvas.toDataURL('image/jpeg', 0.85);
-
-    // Flash effect
-    const flash = document.getElementById('flashEl');
-    flash.classList.add('on');
-    setTimeout(() => flash.classList.remove('on'), 150);
-
-    // Stop camera — no longer needed
-    stopCamera();
-
-    // Show snapshot preview
-    document.getElementById('snapImg').src = imageData;
-    document.getElementById('snapPreview').style.display = 'block';
-    setStep(2);
-
-    // Hide camera, show spinner
-    document.getElementById('camWrap').style.display = 'none';
-    document.getElementById('modalActions').innerHTML = `
-      <div style="display:flex;align-items:center;gap:12px;padding:8px 0">
-        <div class="spinner"></div>
-        <span style="color:#94a3b8;font-size:0.85rem">AI is verifying the area…</span>
-      </div>`;
-    setStep(3);
-
-    runAIVerification(imageData);
-  }
-
-  async function runAIVerification(imageData) {
+  async function runAIVerification() {
     try {
       const res = await fetch(`${API}/api/task/detections/${activeTaskId}/complete`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageData })
+        body: JSON.stringify({}) // backend pulls admin camera snapshot itself
       });
 
       const result = await res.json();
       const aiResult = document.getElementById('aiResult');
       aiResult.style.display = 'block';
 
+      // Show the snapshot that was used
+      if (result.snapshotUsed || result.data?.completionImage) {
+        const imgSrc = result.data?.completionImage;
+        if (imgSrc) {
+          document.getElementById('snapImg').src = imgSrc;
+          document.getElementById('snapPreview').style.display = 'block';
+        }
+      }
+
+      // Also fetch and show the latest snapshot preview
+      try {
+        const snapRes = await fetch(`${API}/api/camera/snapshot/latest`);
+        const snap = await snapRes.json();
+        if (snap.imageData) {
+          document.getElementById('snapImg').src = snap.imageData;
+          document.getElementById('snapPreview').style.display = 'block';
+        }
+      } catch {}
+
       if (res.ok && result.verified) {
-        setStep(4);
+        setStep(3);
         aiResult.className = 'ai-result success';
         document.getElementById('aiTitle').textContent = '✅ AI Verified — Area is clean!';
         document.getElementById('aiReason').textContent = result.verificationReason || 'Task marked as completed.';
@@ -580,39 +532,26 @@
           `<button class="btn btn-start btn-full" onclick="closeModal();renderTasks();">✔ Close</button>`;
         showToast('✅ Task completed!', 'ok');
       } else {
-        setStep(3);
+        setStep(2);
         aiResult.className = 'ai-result fail';
         document.getElementById('aiTitle').textContent = '❌ AI Rejected — Area not clean';
         document.getElementById('aiReason').textContent =
-          result.reason || result.message || 'The area still appears to have waste. Please clean and try again.';
+          result.reason || result.error || result.message || 'The area still appears to have waste.';
 
         document.getElementById('modalActions').innerHTML = `
-          <button class="btn btn-verify btn-full" onclick="retryVerify()">🔄 Retry</button>
+          <button class="btn btn-verify btn-full" onclick="checkCameraAndVerify()">🔄 Retry</button>
           <button class="btn btn-cancel btn-full" onclick="closeModal()">Cancel</button>`;
         showToast('❌ Verification failed. Try again.', 'err');
       }
     } catch (err) {
       document.getElementById('aiResult').style.display = 'block';
       document.getElementById('aiResult').className = 'ai-result fail';
-      document.getElementById('aiTitle').textContent = '⚠️ Verification error';
+      document.getElementById('aiTitle').textContent = '⚠️ Error';
       document.getElementById('aiReason').textContent = err.message;
       document.getElementById('modalActions').innerHTML = `
-        <button class="btn btn-verify btn-full" onclick="retryVerify()">🔄 Retry</button>
+        <button class="btn btn-verify btn-full" onclick="checkCameraAndVerify()">🔄 Retry</button>
         <button class="btn btn-cancel btn-full" onclick="closeModal()">Cancel</button>`;
     }
-  }
-
-  function retryVerify() {
-    document.getElementById('snapPreview').style.display = 'none';
-    document.getElementById('aiResult').style.display = 'none';
-    document.getElementById('camWrap').style.display = 'block';
-    document.getElementById('camOverlay').classList.remove('hidden');
-    document.getElementById('camOverlay').innerHTML = '<div class="icon">📷</div><div>Starting camera…</div>';
-    document.getElementById('countdownRing').classList.add('hidden');
-    document.getElementById('modalActions').innerHTML =
-      `<button class="btn btn-cancel btn-full" onclick="closeModal()">Cancel</button>`;
-    setStep(1);
-    startCameraAndCountdown();
   }
 
   function showToast(msg, type = 'ok') {
@@ -627,5 +566,6 @@
 
   loadTasks();
 </script>
+
 </body>
 </html>

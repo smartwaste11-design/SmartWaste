@@ -18,6 +18,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import detectionRoutes from "./routes/detections.js";
 import taskRoutes from "./routes/taskRoutes.js";
+import cameraRoutes from "./routes/cameraRoutes.js";
 
 /* ===== changeStreamWatcher imports (UNCHANGED) ===== */
 import { Task } from "./taskModel.js";
@@ -49,6 +50,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 // Routes
 app.use("/api/task", detectionRoutes);
 app.use("/api/tasks", taskRoutes);
+app.use("/api/camera", cameraRoutes);
 
 // Connect to MongoDB (SINGLE CONNECTION)
 mongoose

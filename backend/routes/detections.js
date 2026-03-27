@@ -4,6 +4,7 @@ import { Task } from '../taskModel.js';
 import Worker from '../Models/Worker.js';
 import cloudinary from '../config/cloudinary.js';
 import Groq from 'groq-sdk';
+import { latestSnapshot } from './cameraRoutes.js';
 
 const router = express.Router();
 
@@ -466,15 +467,31 @@ router.put('/assigned-tasks/:id/status', async (req, res) => {
   }
 });
 
-// PUT mark task complete with verification screenshot
+// PUT mark task complete — uses latest admin camera snapshot for AI verification
 router.put('/detections/:id/complete', async (req, res) => {
   try {
-    const { imageData } = req.body;
-    if (!imageData) return res.status(400).json({ success: false, message: 'imageData is required' });
-
     // Fetch the original task to get the before image
     const task = await Detection.findById(req.params.id);
     if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
+
+    // ── Pull latest admin camera snapshot ────────────────────────────────────
+    if (!latestSnapshot) {
+      return res.status(503).json({
+        success: false,
+        error: 'Admin camera is not running. Please ensure the admin camera page is open.'
+      });
+    }
+
+    const ageSeconds = (Date.now() - new Date(latestSnapshot.timestamp).getTime()) / 1000;
+    if (ageSeconds > 30) {
+      return res.status(503).json({
+        success: false,
+        error: `Admin camera snapshot is stale (${Math.round(ageSeconds)}s old). Please ensure the admin camera is active.`
+      });
+    }
+
+    const imageData = latestSnapshot.imageData;
+    console.log(`📷 Using admin camera snapshot from ${latestSnapshot.cameraId} (${Math.round(ageSeconds)}s ago)`);
 
     // ── Groq before/after verification ──────────────────────────────────────
     let verified = false;
@@ -521,7 +538,7 @@ Rules:
                 },
                 {
                   type: 'text',
-                  text: 'AFTER image (worker completion screenshot):'
+                  text: 'AFTER image (admin camera snapshot at time of worker completion):'
                 },
                 {
                   type: 'image_url',
@@ -543,19 +560,16 @@ Rules:
           verificationReason = result.reason || 'No reason provided';
           console.log(`🤖 Groq verification: ${verified ? '✅ Verified' : '❌ Rejected'} | ${verificationReason}`);
         } else {
-          // Unparseable response — give benefit of the doubt
           verified = true;
           verificationReason = 'Could not parse AI response — marked complete by default';
           console.warn('⚠️ Groq returned unparseable response, defaulting to verified');
         }
       } catch (groqErr) {
-        // Groq failed — don't block completion, just log
         verified = true;
         verificationReason = `Groq verification failed (${groqErr.message}) — marked complete by default`;
         console.error('⚠️ Groq verification error:', groqErr.message);
       }
     } else {
-      // No Groq client or no before image — auto-approve
       verified = true;
       verificationReason = task.imagePath ? 'Groq client not configured' : 'No before image to compare';
     }
@@ -581,7 +595,7 @@ Rules:
       completionImageUrl = uploadResult.secure_url;
     } catch (uploadErr) {
       console.error('Cloudinary upload failed for completion image:', uploadErr.message);
-      completionImageUrl = imageData;
+      completionImageUrl = null;
     }
 
     const updated = await Detection.findByIdAndUpdate(
@@ -594,6 +608,7 @@ Rules:
       success: true,
       verified: true,
       verificationReason,
+      snapshotAge: Math.round(ageSeconds),
       data: updated
     });
   } catch (error) {

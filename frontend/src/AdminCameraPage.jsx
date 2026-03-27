@@ -498,15 +498,19 @@ export default function AdminCameraPage() {
         }
     };
 
+    // Track whether we're returning to an already-active stream
+    const pendingDetectionRef = useRef(false);
+
     useEffect(() => {
         loadModel();
         fetchTaskStats();
 
-        // If stream already running (e.g. navigated back), attach to display video
+        // If stream already running (e.g. navigated back), mark that we need to restart detection after model loads
         const existingStream = getStream();
         if (existingStream && videoRef.current) {
             videoRef.current.srcObject = existingStream;
             videoRef.current.play().catch(() => {});
+            pendingDetectionRef.current = true;
         }
 
         const statsInterval = setInterval(fetchTaskStats, 30000);
@@ -519,6 +523,15 @@ export default function AdminCameraPage() {
             clearInterval(statsInterval);
         };
     }, []);
+
+    // Once model is loaded, restart detection loop if we returned to an active stream
+    useEffect(() => {
+        if (modelLoaded && pendingDetectionRef.current) {
+            pendingDetectionRef.current = false;
+            if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+            detectObjects();
+        }
+    }, [modelLoaded]);
 
     return (
         <div className="min-h-screen bg-black text-white p-6">

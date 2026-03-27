@@ -22,8 +22,9 @@ const client = new twilio(accountSid, authToken);
  */
 async function sendTaskSMS(phoneNumber, task, worker) {
   try {
+    const workerPageUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/worker-tasks.html?workerId=${worker._id}`;
     // Format the message with task details
-    const messageBody = `Hello ${worker.firstName}, this message is from smartwaste. You are assigned with a task of ${task.department} (${task.severity} priority) at ${task.location || 'designated area'}.\nThank you!!`;
+    const messageBody = `Hello ${worker.firstName}, this message is from smartwaste. You are assigned with a task of ${task.department} (${task.severity} priority) at ${task.location || 'designated area'}.\nView your tasks here: ${workerPageUrl}\nThank you!!`;
     
     // Send the SMS
     const message = await client.messages.create({

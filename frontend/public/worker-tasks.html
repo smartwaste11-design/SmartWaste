@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Tasks – SmartWaste</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a; color: #e2e8f0;
+      min-height: 100vh; padding: 24px 16px;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+    .header { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+    .header-icon {
+      width: 44px; height: 44px; background: #16a34a22;
+      border: 1px solid #16a34a55; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center; font-size: 22px;
+    }
+    .header h1 { font-size: 1.5rem; font-weight: 700; }
+    .header p { font-size: 0.8rem; color: #94a3b8; margin-top: 2px; }
+    .stats-row {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px; margin-bottom: 24px;
+    }
+    .stat-card {
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 12px; padding: 16px; text-align: center;
+    }
+    .stat-card .num { font-size: 1.8rem; font-weight: 700; }
+    .stat-card .lbl { font-size: 0.75rem; color: #94a3b8; margin-top: 4px; }
+    .stat-card.green .num { color: #22c55e; }
+    .stat-card.yellow .num { color: #eab308; }
+    .stat-card.blue .num { color: #38bdf8; }
+    .filter-bar {
+      display: flex; gap: 10px; margin-bottom: 20px;
+      flex-wrap: wrap; align-items: center;
+    }
+    .filter-bar select, .filter-bar button {
+      background: #1e293b; border: 1px solid #334155;
+      color: #cbd5e1; border-radius: 8px;
+      padding: 8px 14px; font-size: 0.85rem; cursor: pointer; outline: none;
+    }
+    .filter-bar select:focus { border-color: #22c55e; }
+    .filter-bar button { display: flex; align-items: center; gap: 6px; transition: background 0.2s; }
+    .filter-bar button:hover { background: #273549; }
+    .btn-refresh { margin-left: auto; }
+    .task-list { display: flex; flex-direction: column; gap: 14px; }
+    .task-card {
+      background: #1e293b; border: 1px solid #334155;
+      border-radius: 14px; padding: 18px 20px; transition: border-color 0.2s;
+    }
+    .task-card:hover { border-color: #22c55e55; }
+    .task-card.completed { opacity: 0.6; }
+    .task-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .task-title { font-size: 1rem; font-weight: 600; margin-bottom: 4px; }
+    .task-desc { font-size: 0.82rem; color: #94a3b8; }
+    .badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+    .badge {
+      font-size: 0.72rem; font-weight: 600;
+      padding: 3px 10px; border-radius: 20px; white-space: nowrap;
+    }
+    .badge-incomplete { background: #78350f33; color: #fbbf24; border: 1px solid #78350f; }
+    .badge-inprogress { background: #1e3a5f; color: #38bdf8; border: 1px solid #1d4ed8; }
+    .badge-completed { background: #14532d33; color: #4ade80; border: 1px solid #166534; }
+    .badge-high { background: #7f1d1d33; color: #f87171; border: 1px solid #991b1b; }
+    .badge-medium { background: #78350f33; color: #fbbf24; border: 1px solid #92400e; }
+    .badge-low { background: #14532d33; color: #4ade80; border: 1px solid #166534; }
+    .task-meta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; font-size: 0.78rem; color: #64748b; }
+    .task-meta span { display: flex; align-items: center; gap: 5px; }
+    .before-img {
+      margin-top: 12px; border-radius: 8px; overflow: hidden;
+      border: 1px solid #334155; max-height: 160px;
+    }
+    .before-img img { width: 100%; height: 160px; object-fit: cover; display: block; }
+    .before-img-label { font-size: 0.7rem; color: #64748b; padding: 4px 8px; background: #0f172a; }
+    .task-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+    .btn {
+      padding: 7px 16px; border-radius: 8px;
+      font-size: 0.8rem; font-weight: 600;
+      border: none; cursor: pointer; transition: opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-start { background: #16a34a; color: #fff; }
+    .btn-verify { background: #7c3aed; color: #fff; display: flex; align-items: center; gap: 6px; }
+    .btn-view  { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+    .empty { text-align: center; padding: 60px 20px; color: #475569; font-size: 0.9rem; }
+    .empty .icon { font-size: 3rem; margin-bottom: 12px; }
+    .loading { text-align: center; padding: 40px; color: #475569; }
+
+    /* ── Camera Modal ── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+      z-index: 1000; display: flex; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal {
+      background: #0f172a; border: 1px solid #334155;
+      border-radius: 16px; width: 100%; max-width: 560px;
+      overflow: hidden;
+    }
+    .modal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; border-bottom: 1px solid #1e293b;
+    }
+    .modal-header h2 { font-size: 1rem; font-weight: 700; }
+    .modal-close {
+      background: none; border: none; color: #94a3b8;
+      font-size: 1.4rem; cursor: pointer; line-height: 1;
+    }
+    .modal-close:hover { color: #f87171; }
+    .modal-body { padding: 20px; }
+
+    /* steps */
+    .steps { display: flex; gap: 0; margin-bottom: 20px; }
+    .step {
+      flex: 1; text-align: center; font-size: 0.72rem; color: #475569;
+      padding-bottom: 8px; border-bottom: 2px solid #1e293b;
+      transition: all 0.2s;
+    }
+    .step.active { color: #a78bfa; border-color: #7c3aed; font-weight: 600; }
+    .step.done { color: #22c55e; border-color: #22c55e; }
+
+    /* camera view */
+    .cam-wrap {
+      position: relative; background: #000;
+      border-radius: 10px; overflow: hidden;
+      aspect-ratio: 16/9; margin-bottom: 16px;
+    }
+    #camVideo { width: 100%; height: 100%; object-fit: cover; display: block; }
+    #snapCanvas { display: none; }
+    .cam-overlay {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 8px; color: #94a3b8; font-size: 0.85rem;
+    }
+    .cam-overlay .icon { font-size: 2.5rem; }
+    .cam-overlay.hidden { display: none; }
+    /* countdown ring */
+    .countdown-ring {
+      position: absolute; inset: 0; pointer-events: none;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .countdown-ring.hidden { display: none; }
+    .countdown-num {
+      font-size: 5rem; font-weight: 900; color: #fff;
+      text-shadow: 0 0 20px rgba(124,58,237,0.9), 0 2px 8px rgba(0,0,0,0.8);
+      animation: pop 0.4s ease;
+    }
+    @keyframes pop {
+      0%   { transform: scale(1.4); opacity: 0.4; }
+      100% { transform: scale(1);   opacity: 1; }
+    }
+    /* flash effect on capture */
+    .flash {
+      position: absolute; inset: 0; background: #fff;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.05s;
+    }
+    .flash.on { opacity: 0.85; }
+
+    /* snapshot preview */
+    .snap-preview {
+      border-radius: 10px; overflow: hidden;
+      border: 1px solid #334155; margin-bottom: 16px; display: none;
+    }
+    .snap-preview img { width: 100%; display: block; }
+    .snap-label {
+      font-size: 0.72rem; color: #64748b;
+      padding: 4px 8px; background: #0f172a;
+    }
+
+    /* AI result */
+    .ai-result {
+      border-radius: 10px; padding: 14px 16px;
+      margin-bottom: 16px; display: none;
+    }
+    .ai-result.success { background: #14532d22; border: 1px solid #166534; }
+    .ai-result.fail    { background: #7f1d1d22; border: 1px solid #991b1b; }
+    .ai-result .ai-title { font-size: 0.85rem; font-weight: 700; margin-bottom: 4px; }
+    .ai-result.success .ai-title { color: #4ade80; }
+    .ai-result.fail    .ai-title { color: #f87171; }
+    .ai-result .ai-reason { font-size: 0.78rem; color: #94a3b8; }
+
+    /* spinner */
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid #334155; border-top-color: #7c3aed;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .modal-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn-full { flex: 1; padding: 10px; font-size: 0.85rem; }
+    .btn-cancel { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+
+    /* toast */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      padding: 12px 20px; border-radius: 10px;
+      font-size: 0.85rem; font-weight: 600;
+      opacity: 0; pointer-events: none; transition: opacity 0.3s; z-index: 9999;
+    }
+    #toast.show { opacity: 1; }
+    #toast.ok  { background: #16a34a; color: #fff; }
+    #toast.err { background: #dc2626; color: #fff; }
+    #toast.info { background: #0284c7; color: #fff; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="header-icon">♻️</div>
+    <div>
+      <h1>My Tasks</h1>
+      <p id="workerName">SmartWaste Worker Portal</p>
+    </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-card blue"><div class="num" id="statTotal">0</div><div class="lbl">Total</div></div>
+    <div class="stat-card yellow"><div class="num" id="statIncomplete">0</div><div class="lbl">Incomplete</div></div>
+    <div class="stat-card blue"><div class="num" id="statInProgress">0</div><div class="lbl">In Progress</div></div>
+    <div class="stat-card green"><div class="num" id="statCompleted">0</div><div class="lbl">Completed</div></div>
+  </div>
+
+  <div class="filter-bar">
+    <select id="filterStatus">
+      <option value="">All Statuses</option>
+      <option value="Incomplete">Incomplete</option>
+      <option value="In Progress">In Progress</option>
+      <option value="Completed">Completed</option>
+    </select>
+    <select id="filterPriority">
+      <option value="">All Priorities</option>
+      <option value="High">High</option>
+      <option value="Medium">Medium</option>
+      <option value="Low">Low</option>
+    </select>
+    <button class="btn-refresh" onclick="loadTasks()">🔄 Refresh</button>
+  </div>
+
+  <div id="taskList" class="task-list">
+    <div class="loading">Loading tasks…</div>
+  </div>
+</div>
+
+<!-- ── AI Verification Modal ── -->
+<div class="modal-overlay hidden" id="verifyModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>🤖 AI Completion Verification</h2>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <div class="steps">
+        <div class="step active" id="step1">1. Camera</div>
+        <div class="step" id="step2">2. Screenshot</div>
+        <div class="step" id="step3">3. AI Check</div>
+        <div class="step" id="step4">4. Done</div>
+      </div>
+
+      <!-- Camera view -->
+      <div class="cam-wrap" id="camWrap">
+        <video id="camVideo" autoplay playsinline muted></video>
+        <div class="cam-overlay" id="camOverlay">
+          <div class="icon">📷</div>
+          <div>Starting camera…</div>
+        </div>
+        <div class="countdown-ring hidden" id="countdownRing">
+          <div class="countdown-num" id="countdownNum"></div>
+        </div>
+        <div class="flash" id="flashEl"></div>
+      </div>
+      <canvas id="snapCanvas"></canvas>
+
+      <!-- Snapshot preview -->
+      <div class="snap-preview" id="snapPreview">
+        <div class="snap-label">📸 Captured screenshot</div>
+        <img id="snapImg" src="" alt="snapshot" />
+      </div>
+
+      <!-- AI result -->
+      <div class="ai-result" id="aiResult">
+        <div class="ai-title" id="aiTitle"></div>
+        <div class="ai-reason" id="aiReason"></div>
+      </div>
+
+      <!-- Actions -->
+      <div class="modal-actions" id="modalActions">
+        <button class="btn btn-cancel btn-full" onclick="closeModal()">Cancel</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  const API = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:5000'
+    : 'https://your-backend-url.com';
+
+  const params = new URLSearchParams(window.location.search);
+  const workerId = params.get('workerId');
+
+  let allTasks = [];
+  let activeTaskId = null;
+  let camStream = null;
+  let countdownTimer = null;
+
+  // ── Load tasks ──────────────────────────────────────────────────────────────
+  async function loadTasks() {
+    document.getElementById('taskList').innerHTML = '<div class="loading">Loading tasks…</div>';
+    try {
+      const url = workerId
+        ? `${API}/api/tasks/worker/${workerId}`
+        : `${API}/api/tasks`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      const data = await res.json();
+      allTasks = Array.isArray(data) ? data : (data.tasks || []);
+      updateStats();
+      renderTasks();
+    } catch (err) {
+      document.getElementById('taskList').innerHTML =
+        `<div class="empty"><div class="icon">⚠️</div>${err.message}</div>`;
+    }
+  }
+
+  function updateStats() {
+    document.getElementById('statTotal').textContent = allTasks.length;
+    document.getElementById('statIncomplete').textContent = allTasks.filter(t => t.status === 'Incomplete').length;
+    document.getElementById('statInProgress').textContent = allTasks.filter(t => t.status === 'In Progress').length;
+    document.getElementById('statCompleted').textContent = allTasks.filter(t => t.status === 'Completed').length;
+  }
+
+  function renderTasks() {
+    const sf = document.getElementById('filterStatus').value;
+    const pf = document.getElementById('filterPriority').value;
+    const list = document.getElementById('taskList');
+    const tasks = allTasks.filter(t => {
+      if (sf && t.status !== sf) return false;
+      if (pf && t.priority !== pf) return false;
+      return true;
+    });
+    if (!tasks.length) {
+      list.innerHTML = '<div class="empty"><div class="icon">📭</div>No tasks found.</div>';
+      return;
+    }
+    list.innerHTML = tasks.map(taskCard).join('');
+  }
+
+  function statusBadge(s) {
+    const map = {
+      'Incomplete': ['badge-incomplete', 'Incomplete'],
+      'In Progress': ['badge-inprogress', 'In Progress'],
+      'Completed':   ['badge-completed',  'Completed'],
+    };
+    const [cls, lbl] = map[s] || ['badge-incomplete', s];
+    return `<span class="badge ${cls}">${lbl}</span>`;
+  }
+
+  function priorityBadge(p) {
+    if (!p) return '';
+    const cls = { High: 'badge-high', Medium: 'badge-medium', Low: 'badge-low' }[p] || 'badge-low';
+    return `<span class="badge ${cls}">${p}</span>`;
+  }
+
+  function taskCard(t) {
+    const id = t._id || t.id;
+    const date = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '—';
+    const isCompleted = t.status === 'Completed';
+
+    let actions = '';
+    if (t.status === 'Incomplete') {
+      actions += `<button class="btn btn-start" onclick="startTask('${id}')">▶ Start</button>`;
+    }
+    if (t.status === 'In Progress') {
+      actions += `<button class="btn btn-verify" onclick="openVerify('${id}')">🤖 Verify & Complete</button>`;
+    }
+
+    const beforeImg = t.imagePath
+      ? `<div class="before-img">
+           <div class="before-img-label">📷 Detection image</div>
+           <img src="${t.imagePath}" alt="detection" loading="lazy" onerror="this.parentElement.style.display='none'" />
+         </div>`
+      : '';
+
+    return `
+    <div class="task-card${isCompleted ? ' completed' : ''}" id="card-${id}">
+      <div class="task-top">
+        <div>
+          <div class="task-title">${t.detectedClass ? t.detectedClass.charAt(0).toUpperCase()+t.detectedClass.slice(1) : 'Task'} — ${t.department || ''}</div>
+          <div class="task-desc">${t.description || ''}</div>
+        </div>
+        <div class="badges">
+          ${statusBadge(t.status)}
+          ${priorityBadge(t.priority)}
+        </div>
+      </div>
+      ${beforeImg}
+      <div class="task-meta">
+        <span>📍 ${t.location || '—'}</span>
+        <span>📅 ${date}</span>
+        ${t.severity ? `<span>⚡ ${t.severity}</span>` : ''}
+        ${t.cameraId ? `<span>📹 ${t.cameraId}</span>` : ''}
+        ${t.confidenceScore ? `<span>🎯 ${(t.confidenceScore*100).toFixed(0)}%</span>` : ''}
+      </div>
+      <div class="task-actions">${actions}</div>
+    </div>`;
+  }
+
+  async function startTask(id) {
+    try {
+      const res = await fetch(`${API}/api/tasks/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'In Progress' })
+      });
+      if (!res.ok) throw new Error('Failed');
+      const idx = allTasks.findIndex(t => (t._id||t.id) === id);
+      if (idx !== -1) allTasks[idx].status = 'In Progress';
+      updateStats(); renderTasks();
+      showToast('▶ Task started!', 'info');
+    } catch { showToast('❌ Could not start task', 'err'); }
+  }
+
+  // ── Verify Modal ────────────────────────────────────────────────────────────
+  function openVerify(taskId) {
+    activeTaskId = taskId;
+    resetModal();
+    document.getElementById('verifyModal').classList.remove('hidden');
+    startCameraAndCountdown();
+  }
+
+  function closeModal() {
+    clearCountdown();
+    stopCamera();
+    document.getElementById('verifyModal').classList.add('hidden');
+    activeTaskId = null;
+  }
+
+  function resetModal() {
+    setStep(1);
+    document.getElementById('snapPreview').style.display = 'none';
+    document.getElementById('aiResult').style.display = 'none';
+    document.getElementById('camWrap').style.display = 'block';
+    document.getElementById('camOverlay').classList.remove('hidden');
+    document.getElementById('camOverlay').innerHTML = '<div class="icon">📷</div><div>Starting camera…</div>';
+    document.getElementById('countdownRing').classList.add('hidden');
+    document.getElementById('flashEl').classList.remove('on');
+    document.getElementById('modalActions').innerHTML =
+      `<button class="btn btn-cancel btn-full" onclick="closeModal()">Cancel</button>`;
+  }
+
+  function setStep(n) {
+    [1,2,3,4].forEach(i => {
+      const el = document.getElementById(`step${i}`);
+      el.className = 'step' + (i < n ? ' done' : i === n ? ' active' : '');
+    });
+  }
+
+  function clearCountdown() {
+    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+  }
+
+  async function startCameraAndCountdown() {
+    try {
+      camStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      const video = document.getElementById('camVideo');
+      video.srcObject = camStream;
+
+      await new Promise(resolve => { video.onloadedmetadata = () => { video.play(); resolve(); }; });
+
+      // Camera ready — hide overlay, start 3-second countdown
+      document.getElementById('camOverlay').classList.add('hidden');
+      startCountdown(3);
+    } catch (err) {
+      document.getElementById('camOverlay').innerHTML =
+        `<div class="icon">⚠️</div><div>Camera access denied.<br>Please allow camera permissions.</div>`;
+    }
+  }
+
+  function startCountdown(seconds) {
+    const ring = document.getElementById('countdownRing');
+    const num  = document.getElementById('countdownNum');
+    ring.classList.remove('hidden');
+    num.textContent = seconds;
+
+    // Force re-trigger animation on each tick
+    let remaining = seconds;
+    countdownTimer = setInterval(() => {
+      remaining--;
+      if (remaining <= 0) {
+        clearCountdown();
+        ring.classList.add('hidden');
+        captureAndVerify();
+      } else {
+        // Re-trigger pop animation
+        num.style.animation = 'none';
+        num.offsetHeight; // reflow
+        num.style.animation = '';
+        num.textContent = remaining;
+      }
+    }, 1000);
+  }
+
+  function stopCamera() {
+    if (camStream) {
+      camStream.getTracks().forEach(t => t.stop());
+      camStream = null;
+    }
+  }
+
+  function captureAndVerify() {
+    const video  = document.getElementById('camVideo');
+    const canvas = document.getElementById('snapCanvas');
+    canvas.width  = video.videoWidth  || 640;
+    canvas.height = video.videoHeight || 480;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const imageData = canvas.toDataURL('image/jpeg', 0.85);
+
+    // Flash effect
+    const flash = document.getElementById('flashEl');
+    flash.classList.add('on');
+    setTimeout(() => flash.classList.remove('on'), 150);
+
+    // Stop camera — no longer needed
+    stopCamera();
+
+    // Show snapshot preview
+    document.getElementById('snapImg').src = imageData;
+    document.getElementById('snapPreview').style.display = 'block';
+    setStep(2);
+
+    // Hide camera, show spinner
+    document.getElementById('camWrap').style.display = 'none';
+    document.getElementById('modalActions').innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;padding:8px 0">
+        <div class="spinner"></div>
+        <span style="color:#94a3b8;font-size:0.85rem">AI is verifying the area…</span>
+      </div>`;
+    setStep(3);
+
+    runAIVerification(imageData);
+  }
+
+  async function runAIVerification(imageData) {
+    try {
+      const res = await fetch(`${API}/api/task/detections/${activeTaskId}/complete`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageData })
+      });
+
+      const result = await res.json();
+      const aiResult = document.getElementById('aiResult');
+      aiResult.style.display = 'block';
+
+      if (res.ok && result.verified) {
+        setStep(4);
+        aiResult.className = 'ai-result success';
+        document.getElementById('aiTitle').textContent = '✅ AI Verified — Area is clean!';
+        document.getElementById('aiReason').textContent = result.verificationReason || 'Task marked as completed.';
+
+        const idx = allTasks.findIndex(t => (t._id||t.id) === activeTaskId);
+        if (idx !== -1) allTasks[idx].status = 'Completed';
+        updateStats();
+
+        document.getElementById('modalActions').innerHTML =
+          `<button class="btn btn-start btn-full" onclick="closeModal();renderTasks();">✔ Close</button>`;
+        showToast('✅ Task completed!', 'ok');
+      } else {
+        setStep(3);
+        aiResult.className = 'ai-result fail';
+        document.getElementById('aiTitle').textContent = '❌ AI Rejected — Area not clean';
+        document.getElementById('aiReason').textContent =
+          result.reason || result.message || 'The area still appears to have waste. Please clean and try again.';
+
+        document.getElementById('modalActions').innerHTML = `
+          <button class="btn btn-verify btn-full" onclick="retryVerify()">🔄 Retry</button>
+          <button class="btn btn-cancel btn-full" onclick="closeModal()">Cancel</button>`;
+        showToast('❌ Verification failed. Try again.', 'err');
+      }
+    } catch (err) {
+      document.getElementById('aiResult').style.display = 'block';
+      document.getElementById('aiResult').className = 'ai-result fail';
+      document.getElementById('aiTitle').textContent = '⚠️ Verification error';
+      document.getElementById('aiReason').textContent = err.message;
+      document.getElementById('modalActions').innerHTML = `
+        <button class="btn btn-verify btn-full" onclick="retryVerify()">🔄 Retry</button>
+        <button class="btn btn-cancel btn-full" onclick="closeModal()">Cancel</button>`;
+    }
+  }
+
+  function retryVerify() {
+    document.getElementById('snapPreview').style.display = 'none';
+    document.getElementById('aiResult').style.display = 'none';
+    document.getElementById('camWrap').style.display = 'block';
+    document.getElementById('camOverlay').classList.remove('hidden');
+    document.getElementById('camOverlay').innerHTML = '<div class="icon">📷</div><div>Starting camera…</div>';
+    document.getElementById('countdownRing').classList.add('hidden');
+    document.getElementById('modalActions').innerHTML =
+      `<button class="btn btn-cancel btn-full" onclick="closeModal()">Cancel</button>`;
+    setStep(1);
+    startCameraAndCountdown();
+  }
+
+  function showToast(msg, type = 'ok') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = `show ${type}`;
+    setTimeout(() => el.className = '', 3500);
+  }
+
+  document.getElementById('filterStatus').addEventListener('change', renderTasks);
+  document.getElementById('filterPriority').addEventListener('change', renderTasks);
+
+  loadTasks();
+</script>
+</body>
+</html>

@@ -413,6 +413,7 @@ router.get('/assigned-tasks', async (req, res) => {
       department = '',
       priority = '',
       severity = '',
+      workerId = '',
       page = 1,
       limit = 20,
       sortBy = 'createdAt',
@@ -424,6 +425,7 @@ router.get('/assigned-tasks', async (req, res) => {
     if (department) filter.department = department;
     if (priority) filter.priority = priority;
     if (severity) filter.severity = severity;
+    if (workerId) filter.assignedWorker = workerId;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };

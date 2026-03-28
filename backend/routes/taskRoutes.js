@@ -1,6 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import { Task } from '../taskModel.js';
+import Worker from '../Models/Worker.js';
 
 const router = express.Router();
 
@@ -66,6 +67,19 @@ router.patch('/:id/status', async (req, res) => {
       { new: true }
     );
     if (!task) return res.status(404).json({ message: 'Task not found' });
+
+    // If task is completed and was assigned to a worker, check if all their tasks are done
+    if (status === 'Completed' && task.assignedWorker) {
+      const pendingTasks = await Task.countDocuments({
+        assignedWorker: task.assignedWorker,
+        status: { $ne: 'Completed' }
+      });
+
+      if (pendingTasks === 0) {
+        await Worker.findByIdAndUpdate(task.assignedWorker, { available: true });
+      }
+    }
+
     res.json(task);
   } catch (err) {
     res.status(500).json({ message: err.message });

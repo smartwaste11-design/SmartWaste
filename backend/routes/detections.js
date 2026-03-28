@@ -483,7 +483,7 @@ router.put('/detections/:id/complete', async (req, res) => {
     }
 
     const ageSeconds = (Date.now() - new Date(latestSnapshot.timestamp).getTime()) / 1000;
-    if (ageSeconds > 30) {
+    if (ageSeconds > 120) {
       return res.status(503).json({
         success: false,
         error: `Admin camera snapshot is stale (${Math.round(ageSeconds)}s old). Please ensure the admin camera is active.`
@@ -603,6 +603,19 @@ Rules:
       { status: 'Completed', completionImage: completionImageUrl, completedAt: new Date() },
       { new: true }
     );
+
+    // If task was assigned to a worker, check if all their tasks are now completed
+    if (updated.assignedWorker) {
+      const pendingCount = await Detection.countDocuments({
+        assignedWorker: updated.assignedWorker,
+        status: { $ne: 'Completed' }
+      });
+
+      if (pendingCount === 0) {
+        await Worker.findByIdAndUpdate(updated.assignedWorker, { available: true });
+        console.log(`✅ Worker ${updated.assignedWorker} marked as available — all tasks completed`);
+      }
+    }
 
     res.json({
       success: true,

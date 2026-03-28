@@ -321,6 +321,9 @@
       const data = await res.json();
       allTasks = Array.isArray(data) ? data : (data.tasks || []);
       updateStats(); renderTasks();
+      if (allTasks.length > 0 && allTasks.every(t => t.status === 'Completed')) {
+        showAvailableBanner();
+      }
     } catch (err) {
       document.getElementById('taskList').innerHTML =
         `<div class="empty"><div class="icon">⚠️</div>${err.message}</div>`;
@@ -528,9 +531,18 @@
         if (idx !== -1) allTasks[idx].status = 'Completed';
         updateStats();
 
-        document.getElementById('modalActions').innerHTML =
-          `<button class="btn btn-start btn-full" onclick="closeModal();renderTasks();">✔ Close</button>`;
-        showToast('✅ Task completed!', 'ok');
+        // Check if all tasks are now completed → worker is available
+        const allDone = allTasks.every(t => t.status === 'Completed');
+        if (allDone) {
+          document.getElementById('modalActions').innerHTML =
+            `<button class="btn btn-start btn-full" onclick="closeModal();renderTasks();">✔ Close</button>`;
+          showToast('🎉 All tasks done! You are now marked as available.', 'ok');
+          showAvailableBanner();
+        } else {
+          document.getElementById('modalActions').innerHTML =
+            `<button class="btn btn-start btn-full" onclick="closeModal();renderTasks();">✔ Close</button>`;
+          showToast('✅ Task completed!', 'ok');
+        }
       } else {
         setStep(2);
         aiResult.className = 'ai-result fail';
@@ -552,6 +564,24 @@
         <button class="btn btn-verify btn-full" onclick="checkCameraAndVerify()">🔄 Retry</button>
         <button class="btn btn-cancel btn-full" onclick="closeModal()">Cancel</button>`;
     }
+  }
+
+  function showAvailableBanner() {
+    const existing = document.getElementById('availableBanner');
+    if (existing) return;
+    const banner = document.createElement('div');
+    banner.id = 'availableBanner';
+    banner.style.cssText = `
+      background: #14532d33; border: 1px solid #166534; border-radius: 12px;
+      padding: 16px 20px; margin-bottom: 20px; display: flex;
+      align-items: center; gap: 12px; font-size: 0.9rem; color: #4ade80;
+    `;
+    banner.innerHTML = `<span style="font-size:1.5rem">🎉</span>
+      <div><strong>All tasks completed!</strong><br>
+      <span style="color:#86efac;font-size:0.8rem">You have been marked as available for new assignments.</span></div>`;
+    const container = document.querySelector('.container');
+    const statsRow = document.querySelector('.stats-row');
+    container.insertBefore(banner, statsRow);
   }
 
   function showToast(msg, type = 'ok') {

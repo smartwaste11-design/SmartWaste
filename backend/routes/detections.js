@@ -247,6 +247,19 @@ router.post('/detections', async (req, res) => {
   }
 });
 
+// GET detections with lat/long for map display
+router.get('/detections/map-locations', async (req, res) => {
+  try {
+    const detections = await Detection.find(
+      { latitude: { $ne: null }, longitude: { $ne: null } },
+      { latitude: 1, longitude: 1, detectedClass: 1, severity: 1, priority: 1, status: 1, cameraId: 1, createdAt: 1, imagePath: 1 }
+    ).sort({ createdAt: -1 }).limit(200);
+    res.json({ success: true, locations: detections });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // READ all detections with filters
 router.get('/detections', async (req, res) => {
   try {

@@ -6,12 +6,27 @@ import sampleImage from "./sample.png"; // Adjust the path as needed
 import OpenImageVideo from "./OpenImageVideo";
 
 // Blue Marker Icon for detected locations
-const blueIcon = new L.Icon({
-  iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
-  iconSize: [35, 35],
-  iconAnchor: [17, 35],
-  popupAnchor: [0, -35],
+const severityColors = { High: '#ef4444', Medium: '#f97316', Low: '#22c55e' };
+
+const makePinIcon = (color) => L.divIcon({
+  html: `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40">
+    <filter id="s"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.3"/></filter>
+    <path d="M16 2C9.373 2 4 7.373 4 14c0 9 12 24 12 24S28 23 28 14C28 7.373 22.627 2 16 2z"
+      fill="${color}" filter="url(#s)"/>
+    <circle cx="16" cy="14" r="4" fill="white"/>
+  </svg>`,
+  className: '',
+  iconSize: [32, 40],
+  iconAnchor: [16, 40],
+  popupAnchor: [0, -40],
 });
+
+const blueIcon = makePinIcon('#3b82f6');
+
+const severityIcon = (severity) => {
+  const color = severityColors[severity] || '#3b82f6';
+  return makePinIcon(color);
+};
 
 // Map component to display garbage locations and detected locations
 const MapControl = ({ detectedLocations }) => {
@@ -20,69 +35,49 @@ const MapControl = ({ detectedLocations }) => {
   useEffect(() => {
     // Add detected locations to map
     detectedLocations.forEach(async (loc) => {
-      const marker = L.marker([loc.latitude, loc.longitude], { icon: blueIcon }).addTo(map);
-
-      // Format the timestamp to a readable date/time
-      const detectionTime = new Date(loc.timestamp).toLocaleString();
-
-      // Fetch city name using OpenStreetMap Nominatim API
+      // Resolve place name BEFORE creating the marker/popup
       let cityName = 'Unknown location';
       try {
         const response = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${loc.latitude}&lon=${loc.longitude}&zoom=10`
+          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${loc.latitude}&longitude=${loc.longitude}&localityLanguage=en`
         );
         const data = await response.json();
-
-        // Extract city name from the response
-        if (data.address) {
-          cityName = data.address.city ||
-            data.address.town ||
-            data.address.village ||
-            data.address.hamlet ||
-            'Unknown location';
-        }
+        cityName =
+          data.locality ||
+          data.city ||
+          data.principalSubdivision ||
+          data.countryName ||
+          'Unknown location';
       } catch (error) {
         console.error('Error fetching location name:', error);
       }
 
-      // Create popup with city name and formatted timestamp
-      const popup = L.popup({
-        autoClose: true,
-        closeOnClick: true
-      })
+      const icon = loc.severity ? severityIcon(loc.severity) : blueIcon;
+      const marker = L.marker([loc.latitude, loc.longitude], { icon }).addTo(map);
+      const detectionTime = new Date(loc.timestamp || loc.createdAt).toLocaleString();
+      const statusColor = { Completed: '#22c55e', 'In Progress': '#38bdf8', Incomplete: '#f59e0b' }[loc.status] || '#94a3b8';
+
+      const popupContent = `
+        <div style="min-width:160px">
+          <strong>📍 ${cityName}</strong><br/>
+          ${loc.detectedClass ? `<span>🗑️ ${loc.detectedClass}</span><br/>` : ''}
+          ${loc.severity ? `<span>⚡ Severity: <b>${loc.severity}</b></span><br/>` : ''}
+          ${loc.status ? `<span>Status: <b style="color:${statusColor}">${loc.status}</b></span><br/>` : ''}
+          <span style="font-size:0.8em;color:#888">🕐 ${detectionTime}</span>
+        </div>`;
+
+      const popup = L.popup({ autoClose: true, closeOnClick: true })
         .setLatLng([loc.latitude, loc.longitude])
-        .setContent(`
-        <div>
-          <span style="font-weight: bold;">📍 ${cityName}</span><br>
-          <span>Detected: ${detectionTime}</span>
-        </div>
-      `);
+        .setContent(popupContent);
 
-      // Add event listeners for hover and click
       marker.bindPopup(popup);
-
-      // Show popup on hover
-      marker.on('mouseover', function () {
-        this.openPopup();
-      });
-
-      // Hide popup when mouse leaves the marker
-      marker.on('mouseout', function () {
-        this.closePopup();
-      });
-
-      // Use flyTo for smooth transition when clicked
+      marker.on('mouseover', function () { this.openPopup(); });
+      marker.on('mouseout', function () { this.closePopup(); });
       marker.on('click', function () {
-        map.flyTo([loc.latitude, loc.longitude], 15, {
-          animate: true,
-          duration: 1 // duration in seconds
-        });
-
-        // Update the selectedLocation info on UI
+        map.flyTo([loc.latitude, loc.longitude], 15, { animate: true, duration: 1 });
         const coordsDisplay = document.getElementById('coordinates-display');
         const latDisplay = document.getElementById('lat-display');
         const lngDisplay = document.getElementById('lng-display');
-
         if (coordsDisplay && latDisplay && lngDisplay) {
           coordsDisplay.classList.remove('hidden');
           latDisplay.textContent = loc.latitude;
@@ -116,34 +111,33 @@ export default function Map() {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/location/get-location`);
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log(data.locations)
-      if (data.locations) {
-        setDetectedLocations(data.locations);
-
-        // Update status text
-        const statusElement = document.getElementById('location-status');
-        if (statusElement) {
-          statusElement.textContent = `${data.locations.length} locations detected`;
+      // Try detections with lat/long first, fall back to legacy location API
+      let locations = [];
+      try {
+        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/task/detections/map-locations`);
+        if (res.ok) {
+          const data = await res.json();
+          locations = data.locations || [];
         }
-      } else {
-        throw new Error(data.message || 'Failed to fetch locations');
+      } catch {}
+
+      // Fall back to legacy location store if no detection locations
+      if (locations.length === 0) {
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/location/get-location`);
+        if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+        const data = await response.json();
+        locations = data.locations || [];
       }
+
+      setDetectedLocations(locations);
+      const statusElement = document.getElementById('location-status');
+      if (statusElement) statusElement.textContent = `${locations.length} locations detected`;
     } catch (err) {
       console.error('Error fetching locations:', err);
       setError(err.message);
-
-      // Update status text
       const statusElement = document.getElementById('location-status');
-      if (statusElement) {
-        statusElement.textContent = 'Failed to fetch locations';
-      }
+      if (statusElement) statusElement.textContent = 'Failed to fetch locations';
     } finally {
       setIsLoading(false);
     }

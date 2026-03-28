@@ -4,6 +4,54 @@ import {
   Clock, ChevronLeft, ChevronRight, ZoomIn
 } from 'lucide-react';
 import { useCameraContext } from './CameraContext';
+import { MapContainer, TileLayer, Marker } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+
+const taskPinIcon = L.divIcon({
+  html: `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
+    <path d="M14 2C8.477 2 4 6.477 4 12c0 8 10 22 10 22S24 20 24 12C24 6.477 19.523 2 14 2z" fill="#ef4444" stroke="#fff" stroke-width="1.5"/>
+    <circle cx="14" cy="12" r="3.5" fill="white"/>
+  </svg>`,
+  className: '',
+  iconSize: [28, 36],
+  iconAnchor: [14, 36],
+  popupAnchor: [0, -36],
+});
+
+// Small inline map for a task — shown in a modal on demand
+function TaskMiniMap({ latitude, longitude, onClose }) {
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl overflow-hidden w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+          <div className="flex items-center gap-2 text-white font-semibold text-sm">
+            <MapPin className="w-4 h-4 text-red-400" /> Task Location
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-800 rounded-lg">
+            <X className="w-4 h-4 text-gray-400" />
+          </button>
+        </div>
+        <div style={{ height: 320 }}>
+          <MapContainer
+            center={[latitude, longitude]}
+            zoom={16}
+            style={{ height: '100%', width: '100%' }}
+            zoomControl={true}
+            scrollWheelZoom={true}
+            attributionControl={false}
+          >
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <Marker position={[latitude, longitude]} icon={taskPinIcon} />
+          </MapContainer>
+        </div>
+        <div className="px-4 py-2 text-xs text-gray-500 text-center">
+          {latitude.toFixed(6)}, {longitude.toFixed(6)}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const API = `${import.meta.env.VITE_BACKEND_URL}/api/task`;
 
@@ -394,6 +442,8 @@ export default function WorkerTaskPage() {
 // ── Task card ─────────────────────────────────────────────────────────────────
 function TaskCard({ task, onComplete, onCompare }) {
   const isCompleted = task.status === 'Completed';
+  const [showMap, setShowMap] = useState(false);
+  const hasLocation = task.latitude && task.longitude;
 
   return (
     <div className={`bg-gray-900 border rounded-xl overflow-hidden flex flex-col transition-all
@@ -427,7 +477,19 @@ function TaskCard({ task, onComplete, onCompare }) {
 
         <div className="flex items-center gap-1.5 text-gray-400 text-xs">
           <MapPin className="w-3 h-3" /> {task.location}
+          {hasLocation && (
+            <button
+              onClick={() => setShowMap(true)}
+              className="ml-auto flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-colors"
+            >
+              <MapPin className="w-3 h-3" /> See Location
+            </button>
+          )}
         </div>
+
+        {showMap && (
+          <TaskMiniMap latitude={task.latitude} longitude={task.longitude} onClose={() => setShowMap(false)} />
+        )}
 
         {/* Assigned worker */}
         {task.assignedWorker && (

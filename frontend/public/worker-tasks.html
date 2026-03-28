@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>My Tasks – SmartWaste</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -75,6 +77,36 @@
     }
     .before-img img { width: 100%; height: 160px; object-fit: cover; display: block; }
     .before-img-label { font-size: 0.7rem; color: #64748b; padding: 4px 8px; background: #0f172a; }
+    .task-mini-map-modal {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.8); z-index: 2000;
+      align-items: center; justify-content: center; padding: 16px;
+    }
+    .task-mini-map-modal.open { display: flex; }
+    .task-mini-map-inner {
+      background: #0f172a; border: 1px solid #334155;
+      border-radius: 16px; overflow: hidden; width: 100%; max-width: 480px;
+    }
+    .task-mini-map-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; border-bottom: 1px solid #1e293b;
+      font-size: 0.85rem; font-weight: 600; color: #e2e8f0;
+    }
+    .task-mini-map-close {
+      background: none; border: none; color: #94a3b8;
+      font-size: 1.2rem; cursor: pointer; line-height: 1;
+    }
+    .task-mini-map-close:hover { color: #f87171; }
+    .task-mini-map-coords {
+      font-size: 0.7rem; color: #64748b; text-align: center; padding: 6px;
+    }
+    .btn-location {
+      background: #1e3a5f; color: #38bdf8;
+      border: 1px solid #1d4ed8; font-size: 0.75rem;
+      padding: 4px 10px; border-radius: 20px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    .btn-location:hover { background: #1e40af; }
     .task-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
     .btn {
       padding: 7px 16px; border-radius: 8px;
@@ -298,6 +330,18 @@
   </div>
 </div>
 
+<!-- Location Map Modal -->
+<div class="task-mini-map-modal" id="locationMapModal">
+  <div class="task-mini-map-inner">
+    <div class="task-mini-map-header">
+      📍 Task Location
+      <button class="task-mini-map-close" onclick="closeLocationMap()">✕</button>
+    </div>
+    <div id="locationMapContainer" style="height:300px"></div>
+    <div class="task-mini-map-coords" id="locationMapCoords"></div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -353,6 +397,42 @@
     list.innerHTML = tasks.map(taskCard).join('');
   }
 
+  let _locationMap = null;
+
+  function openLocationMap(id, lat, lon) {
+    document.getElementById('locationMapModal').classList.add('open');
+    document.getElementById('locationMapCoords').textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+
+    // Destroy previous map instance
+    if (_locationMap) { _locationMap.remove(); _locationMap = null; }
+
+    const container = document.getElementById('locationMapContainer');
+    container.innerHTML = '';
+
+    const pinIcon = L.divIcon({
+      html: `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36">
+        <path d="M14 2C8.477 2 4 6.477 4 12c0 8 10 22 10 22S24 20 24 12C24 6.477 19.523 2 14 2z" fill="#ef4444" stroke="#fff" stroke-width="1.5"/>
+        <circle cx="14" cy="12" r="3.5" fill="white"/>
+      </svg>`,
+      className: '', iconSize: [28, 36], iconAnchor: [14, 36]
+    });
+
+    _locationMap = L.map(container, { attributionControl: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(_locationMap);
+    L.marker([lat, lon], { icon: pinIcon }).addTo(_locationMap);
+    _locationMap.setView([lat, lon], 16);
+  }
+
+  function closeLocationMap() {
+    document.getElementById('locationMapModal').classList.remove('open');
+    if (_locationMap) { _locationMap.remove(); _locationMap = null; }
+  }
+
+  // Close on backdrop click
+  document.getElementById('locationMapModal').addEventListener('click', function(e) {
+    if (e.target === this) closeLocationMap();
+  });
+
   function statusBadge(s) {
     const map = {
       'Incomplete': ['badge-incomplete','Incomplete'],
@@ -385,6 +465,9 @@
            <img src="${t.imagePath}" alt="detection" loading="lazy" onerror="this.parentElement.style.display='none'" />
          </div>` : '';
 
+    const miniMap = (t.latitude && t.longitude)
+      ? `<button class="btn-location" onclick="openLocationMap('${id}', ${t.latitude}, ${t.longitude})">📍 See Location</button>` : '';
+
     return `
     <div class="task-card${isCompleted?' completed':''}" id="card-${id}">
       <div class="task-top">
@@ -396,7 +479,7 @@
       </div>
       ${beforeImg}
       <div class="task-meta">
-        <span>📍 ${t.location||'—'}</span>
+        <span>📍 ${t.location||'—'} ${miniMap}</span>
         <span>📅 ${date}</span>
         ${t.severity?`<span>⚡ ${t.severity}</span>`:''}
         ${t.cameraId?`<span>📹 ${t.cameraId}</span>`:''}

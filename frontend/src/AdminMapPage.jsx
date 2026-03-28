@@ -48,21 +48,32 @@ const reverseGeocode = async (lat, lon) => {
   return "Unknown";
 };
 
+// Spread overlapping markers using golden-angle spiral jitter
+const jitter = (lat, lon, registry) => {
+  const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+  const count = registry.get(key) || 0;
+  registry.set(key, count + 1);
+  if (count === 0) return [lat, lon];
+  const angle = (count - 1) * 137.5 * (Math.PI / 180);
+  const radius = 0.00015 * Math.ceil(count / 8);
+  return [lat + radius * Math.cos(angle), lon + radius * Math.sin(angle)];
+};
+
 const statusColor = { Completed: "#22c55e", "In Progress": "#38bdf8", Incomplete: "#f59e0b" };
 
-function MapMarkers({ detections }) {
+function MapMarkers({ detections, reports = [] }) {
   const map = useMap();
   const markersRef = useRef([]);
 
   useEffect(() => {
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
+    const registry = new Map();
 
     detections.forEach(async (d) => {
-      // Resolve place name BEFORE creating popup
+      const [jLat, jLon] = jitter(d.latitude, d.longitude, registry);
       const place = await reverseGeocode(d.latitude, d.longitude);
-
-      const marker = L.marker([d.latitude, d.longitude], {
+      const marker = L.marker([jLat, jLon], {
         icon: makeIcon(d.severity, d.status),
       }).addTo(map);
 
@@ -80,34 +91,85 @@ function MapMarkers({ detections }) {
           ${d.imagePath ? `<img src="${d.imagePath}" style="width:100%;margin-top:8px;border-radius:6px;max-height:120px;object-fit:cover"/>` : ""}
         </div>
       `);
-
       marker.on("mouseover", function () { this.openPopup(); });
       marker.on("mouseout", function () { this.closePopup(); });
       markersRef.current.push(marker);
     });
-  }, [detections, map]);
+
+    reports.forEach(async (r) => {
+      const [jLat, jLon] = jitter(r.latitude, r.longitude, registry);
+      const place = await reverseGeocode(r.latitude, r.longitude);
+      const reportPinIcon = L.divIcon({
+        html: `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44">
+          <filter id="s"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.35"/></filter>
+          <path d="M18 2C10.268 2 4 8.268 4 16c0 10 14 26 14 26S32 26 32 16C32 8.268 25.732 2 18 2z"
+            fill="#a855f7" filter="url(#s)"/>
+          <text x="18" y="20" text-anchor="middle" font-size="12" fill="white">👤</text>
+        </svg>`,
+        className: "",
+        iconSize: [36, 44],
+        iconAnchor: [18, 44],
+        popupAnchor: [0, -44],
+      });
+      const marker = L.marker([jLat, jLon], { icon: reportPinIcon }).addTo(map);
+      const col = r.status === 'accepted' ? '#22c55e' : '#f59e0b';
+      const time = new Date(r.reportedAt).toLocaleString();
+
+      marker.bindPopup(`
+        <div style="min-width:180px;font-family:sans-serif;line-height:1.6">
+          <div style="font-weight:700;color:#a855f7;margin-bottom:4px">👤 Citizen Report</div>
+          <div>📍 <b>${place}</b></div>
+          ${r.waste_type ? `<div>🗑️ ${r.waste_type}</div>` : ''}
+          ${r.estimated_quantity ? `<div>📦 Quantity: ${r.estimated_quantity}</div>` : ''}
+          ${r.location_type ? `<div>📌 ${r.location_type}</div>` : ''}
+          <div>Status: <b style="color:${col}">${r.status}</b></div>
+          <div style="font-size:0.75em;color:#888;margin-top:2px">🕐 ${time}</div>
+          ${r.imageUrl ? `<img src="${r.imageUrl}" style="width:100%;margin-top:8px;border-radius:6px;max-height:120px;object-fit:cover"/>` : ""}
+        </div>
+      `);
+      marker.on("mouseover", function () { this.openPopup(); });
+      marker.on("mouseout", function () { this.closePopup(); });
+      markersRef.current.push(marker);
+    });
+  }, [detections, reports, map]);
 
   return null;
 }
 
 export default function AdminMapPage() {
   const [detections, setDetections] = useState([]);
+  const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
-  const [stats, setStats] = useState({ total: 0, incomplete: 0, inProgress: 0, completed: 0 });
+  const [stats, setStats] = useState({ total: 0, incomplete: 0, inProgress: 0, completed: 0, reports: 0 });
 
   const fetchDetections = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${BACKEND}/api/task/detections/map-locations`);
-      const data = await res.json();
-      const locs = data.locations || [];
+      const [detRes, repRes] = await Promise.allSettled([
+        fetch(`${BACKEND}/api/task/detections/map-locations`),
+        fetch(`${BACKEND}/api/reports/map-locations`)
+      ]);
+
+      let locs = [];
+      if (detRes.status === 'fulfilled' && detRes.value.ok) {
+        const data = await detRes.value.json();
+        locs = data.locations || [];
+      }
+      let reps = [];
+      if (repRes.status === 'fulfilled' && repRes.value.ok) {
+        const data = await repRes.value.json();
+        reps = data.locations || [];
+      }
+
       setDetections(locs);
+      setReports(reps);
       setStats({
         total: locs.length,
         incomplete: locs.filter((d) => d.status === "Incomplete").length,
         inProgress: locs.filter((d) => d.status === "In Progress").length,
         completed: locs.filter((d) => d.status === "Completed").length,
+        reports: reps.length,
       });
     } catch (err) {
       console.error(err);
@@ -143,6 +205,7 @@ export default function AdminMapPage() {
           { label: "Incomplete", val: stats.incomplete, color: "text-yellow-400" },
           { label: "In Progress", val: stats.inProgress, color: "text-sky-400" },
           { label: "Completed", val: stats.completed, color: "text-green-400" },
+          { label: "Reports", val: stats.reports, color: "text-purple-400" },
         ].map((s) => (
           <div key={s.label} className="bg-gray-900 border border-gray-700 rounded-xl p-3 text-center">
             <div className={`text-2xl font-bold ${s.color}`}>{s.val}</div>
@@ -169,10 +232,11 @@ export default function AdminMapPage() {
       </div>
 
       {/* Legend */}
-      <div className="flex gap-4 mb-3 text-xs text-gray-400">
+      <div className="flex gap-4 mb-3 text-xs text-gray-400 flex-wrap">
         <span>🔴 High severity</span>
-        <span>🟡 Medium severity</span>
-        <span>🔵 Low severity</span>
+        <span>🟠 Medium severity</span>
+        <span>🟢 Low severity</span>
+        <span style={{color:'#a855f7'}}>🟣 Citizen report</span>
       </div>
 
       {/* Map */}
@@ -184,7 +248,7 @@ export default function AdminMapPage() {
         ) : (
           <MapContainer center={[20, 78]} zoom={5} style={{ height: "100%", width: "100%" }}>
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-            <MapMarkers detections={filtered} />
+            <MapMarkers detections={filtered} reports={reports} />
           </MapContainer>
         )}
       </div>

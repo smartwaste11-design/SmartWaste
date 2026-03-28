@@ -8,8 +8,7 @@ import AdminCameraPage from "./AdminCameraPage";
 import TaskStatsPage from "./TaskStatsPage";
 import TaskAssignmentPage from "./TaskAssignmentPage";
 import WorkerTaskPage from "./WorkerTaskPage";
-import AdminMapPage from "./AdminMapPage";
-import { BarChart2, FileText, ShoppingBag, Map, Menu, X, HardHat, Camera, BarChart3, ClipboardList, CheckSquare, MapPin } from "lucide-react";
+import { BarChart2, FileText, ShoppingBag, Map, Menu, X, HardHat, Camera, BarChart3, ClipboardList, CheckSquare } from "lucide-react";
 
 
 function Sidebar({ setActiveComponent }) {
@@ -25,7 +24,6 @@ function Sidebar({ setActiveComponent }) {
     { icon: BarChart3, text: "Task Stats", component: "TaskStats" },
     { icon: ClipboardList, text: "Task Assignments", component: "TaskAssignments" },
     { icon: CheckSquare, text: "Task Completion", component: "WorkerTasks" },
-    { icon: MapPin, text: "Detection Map", component: "AdminMap" },
   ];
 
   const toggleSidebar = () => setIsOpen((prev) => !prev);
@@ -97,7 +95,6 @@ const AdminDashboard = () => {
           {activeComponent === "TaskStats" && <TaskStatsPage />}
           {activeComponent === "TaskAssignments" && <TaskAssignmentPage />}
           {activeComponent === "WorkerTasks" && <WorkerTaskPage />}
-          {activeComponent === "AdminMap" && <AdminMapPage />}
         </main>
       </div>
     </div>

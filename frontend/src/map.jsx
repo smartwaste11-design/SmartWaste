@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
@@ -22,77 +22,108 @@ const makePinIcon = (color) => L.divIcon({
 });
 
 const blueIcon = makePinIcon('#3b82f6');
+const reportIcon = makePinIcon('#a855f7'); // purple for citizen reports
 
 const severityIcon = (severity) => {
   const color = severityColors[severity] || '#3b82f6';
   return makePinIcon(color);
 };
 
+const reverseGeocode = async (lat, lon) => {
+  try {
+    const res = await fetch(
+      `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`
+    );
+    const data = await res.json();
+    return data.locality || data.city || data.principalSubdivision || data.countryName || 'Unknown location';
+  } catch {}
+  return 'Unknown location';
+};
+
+// Spread overlapping markers using golden-angle spiral
+const jitter = (lat, lon, registry) => {
+  const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+  const count = registry.get(key) || 0;
+  registry.set(key, count + 1);
+  if (count === 0) return [lat, lon];
+  const angle = (count - 1) * 137.5 * (Math.PI / 180);
+  const radius = 0.00015 * Math.ceil(count / 8);
+  return [lat + radius * Math.cos(angle), lon + radius * Math.sin(angle)];
+};
+
 // Map component to display garbage locations and detected locations
-const MapControl = ({ detectedLocations }) => {
+const MapControl = ({ detectedLocations, reportLocations }) => {
   const map = useMap();
+  const markersRef = useRef([]);
 
   useEffect(() => {
+    // Remove old markers
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
+
+    const registry = new Map();
+
     // Add detected locations to map
     detectedLocations.forEach(async (loc) => {
-      // Resolve place name BEFORE creating the marker/popup
-      let cityName = 'Unknown location';
-      try {
-        const response = await fetch(
-          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${loc.latitude}&longitude=${loc.longitude}&localityLanguage=en`
-        );
-        const data = await response.json();
-        cityName =
-          data.locality ||
-          data.city ||
-          data.principalSubdivision ||
-          data.countryName ||
-          'Unknown location';
-      } catch (error) {
-        console.error('Error fetching location name:', error);
-      }
-
+      const [jLat, jLon] = jitter(loc.latitude, loc.longitude, registry);
+      const cityName = await reverseGeocode(loc.latitude, loc.longitude);
       const icon = loc.severity ? severityIcon(loc.severity) : blueIcon;
-      const marker = L.marker([loc.latitude, loc.longitude], { icon }).addTo(map);
+      const marker = L.marker([jLat, jLon], { icon }).addTo(map);
       const detectionTime = new Date(loc.timestamp || loc.createdAt).toLocaleString();
-      const statusColor = { Completed: '#22c55e', 'In Progress': '#38bdf8', Incomplete: '#f59e0b' }[loc.status] || '#94a3b8';
+      const sc = { Completed: '#22c55e', 'In Progress': '#38bdf8', Incomplete: '#f59e0b' }[loc.status] || '#94a3b8';
 
-      const popupContent = `
-        <div style="min-width:160px">
+      marker.bindPopup(`
+        <div style="min-width:160px;line-height:1.6">
           <strong>📍 ${cityName}</strong><br/>
-          ${loc.detectedClass ? `<span>🗑️ ${loc.detectedClass}</span><br/>` : ''}
-          ${loc.severity ? `<span>⚡ Severity: <b>${loc.severity}</b></span><br/>` : ''}
-          ${loc.status ? `<span>Status: <b style="color:${statusColor}">${loc.status}</b></span><br/>` : ''}
+          ${loc.detectedClass ? `🗑️ ${loc.detectedClass}<br/>` : ''}
+          ${loc.severity ? `⚡ Severity: <b>${loc.severity}</b><br/>` : ''}
+          ${loc.status ? `Status: <b style="color:${sc}">${loc.status}</b><br/>` : ''}
           <span style="font-size:0.8em;color:#888">🕐 ${detectionTime}</span>
-        </div>`;
-
-      const popup = L.popup({ autoClose: true, closeOnClick: true })
-        .setLatLng([loc.latitude, loc.longitude])
-        .setContent(popupContent);
-
-      marker.bindPopup(popup);
+        </div>`);
       marker.on('mouseover', function () { this.openPopup(); });
       marker.on('mouseout', function () { this.closePopup(); });
-      marker.on('click', function () {
-        map.flyTo([loc.latitude, loc.longitude], 15, { animate: true, duration: 1 });
-        const coordsDisplay = document.getElementById('coordinates-display');
-        const latDisplay = document.getElementById('lat-display');
-        const lngDisplay = document.getElementById('lng-display');
-        if (coordsDisplay && latDisplay && lngDisplay) {
-          coordsDisplay.classList.remove('hidden');
-          latDisplay.textContent = loc.latitude;
-          lngDisplay.textContent = loc.longitude;
-        }
-      });
+      marker.on('click', function () { map.flyTo([loc.latitude, loc.longitude], 15, { animate: true, duration: 1 }); });
+      markersRef.current.push(marker);
     });
-  }, [map, detectedLocations]);
+
+    // Add citizen report locations to map
+    reportLocations.forEach(async (rep) => {
+      const [jLat, jLon] = jitter(rep.latitude, rep.longitude, registry);
+      const cityName = await reverseGeocode(rep.latitude, rep.longitude);
+      const marker = L.marker([jLat, jLon], { icon: reportIcon }).addTo(map);
+      const reportTime = new Date(rep.reportedAt).toLocaleString();
+      const sc = rep.status === 'accepted' ? '#22c55e' : '#f59e0b';
+
+      marker.bindPopup(`
+        <div style="min-width:160px;line-height:1.6">
+          <strong>📍 ${cityName}</strong><br/>
+          <span style="color:#a855f7;font-weight:600">👤 Citizen Report</span><br/>
+          ${rep.waste_type ? `🗑️ ${rep.waste_type}<br/>` : ''}
+          ${rep.estimated_quantity ? `📦 Quantity: ${rep.estimated_quantity}<br/>` : ''}
+          ${rep.location_type ? `📌 ${rep.location_type}<br/>` : ''}
+          Status: <b style="color:${sc}">${rep.status}</b><br/>
+          <span style="font-size:0.8em;color:#888">🕐 ${reportTime}</span>
+          ${rep.imageUrl ? `<img src="${rep.imageUrl}" style="width:100%;margin-top:6px;border-radius:6px;max-height:100px;object-fit:cover"/>` : ''}
+        </div>`);
+      marker.on('mouseover', function () { this.openPopup(); });
+      marker.on('mouseout', function () { this.closePopup(); });
+      marker.on('click', function () { map.flyTo([rep.latitude, rep.longitude], 15, { animate: true, duration: 1 }); });
+      markersRef.current.push(marker);
+    });
+
+    return () => {
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+    };
+  }, [map, detectedLocations, reportLocations]);
 
   return null;
 };
 
-export default function Map() {
+export default function WasteMap() {
   const [file, setFile] = useState(null);
   const [detectedLocations, setDetectedLocations] = useState([]);
+  const [reportLocations, setReportLocations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedLocation, setSelectedLocation] = useState(null);
@@ -112,27 +143,36 @@ export default function Map() {
       setIsLoading(true);
       setError(null);
 
-      // Try detections with lat/long first, fall back to legacy location API
-      let locations = [];
-      try {
-        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/task/detections/map-locations`);
-        if (res.ok) {
-          const data = await res.json();
-          locations = data.locations || [];
-        }
-      } catch {}
+      // Fetch detections and citizen reports in parallel
+      const [detectRes, reportRes] = await Promise.allSettled([
+        fetch(`${import.meta.env.VITE_BACKEND_URL}/api/task/detections/map-locations`),
+        fetch(`${import.meta.env.VITE_BACKEND_URL}/api/reports/map-locations`)
+      ]);
 
-      // Fall back to legacy location store if no detection locations
-      if (locations.length === 0) {
-        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/location/get-location`);
-        if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
-        const data = await response.json();
+      let locations = [];
+      if (detectRes.status === 'fulfilled' && detectRes.value.ok) {
+        const data = await detectRes.value.json();
         locations = data.locations || [];
+      }
+      if (locations.length === 0) {
+        try {
+          const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/location/get-location`);
+          if (res.ok) { const d = await res.json(); locations = d.locations || []; }
+        } catch {}
+      }
+
+      let reports = [];
+      if (reportRes.status === 'fulfilled' && reportRes.value.ok) {
+        const data = await reportRes.value.json();
+        reports = data.locations || [];
       }
 
       setDetectedLocations(locations);
+      setReportLocations(reports);
+
+      const total = locations.length + reports.length;
       const statusElement = document.getElementById('location-status');
-      if (statusElement) statusElement.textContent = `${locations.length} locations detected`;
+      if (statusElement) statusElement.textContent = `${locations.length} detections, ${reports.length} reports`;
     } catch (err) {
       console.error('Error fetching locations:', err);
       setError(err.message);
@@ -214,7 +254,7 @@ export default function Map() {
                   <div id="map" className="h-96 w-full bg-gray-50 dark:bg-neutral-900 relative overflow-hidden z-10">
                     <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: "100%", width: "100%" }}>
                       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                      <MapControl detectedLocations={detectedLocations} />
+                      <MapControl detectedLocations={detectedLocations} reportLocations={reportLocations} />
                     </MapContainer>
                   </div>
 
@@ -289,6 +329,8 @@ export default function Map() {
                         <li>Location details on marker click</li>
                         <li>Automatic location retrieval</li>
                         <li>Real-time updates every 30 seconds</li>
+                        <li>🔴🟠🟢 AI detections by severity</li>
+                        <li style={{color:'#a855f7'}}>🟣 Citizen reported complaints</li>
                       </ul>
                     </div>
                   </div>

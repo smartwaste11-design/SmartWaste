@@ -1,11 +1,11 @@
 import React from 'react'
 import Hero from './hero'
-import Map from './map'
+import WasteMap from './map'
 export default function landingpage() {
   return (
     <div>
       <Hero />
-       <Map />
+       <WasteMap />
        <section id="benefits" className="py-16 bg-white dark:bg-neutral-800">
   <div className="container mx-auto px-4">
     <div className="text-center mb-16">

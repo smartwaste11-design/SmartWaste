@@ -58,8 +58,9 @@ Analyze the image carefully and respond with ONLY a JSON object in this exact fo
 Rules:
 - confirmed: true only if waste, garbage, a bin, or a liquid spill is clearly visible
 - detectedClass: the most accurate class based on what you see (garbage=loose trash/litter, bin=waste container, spills=liquid spill)
-- severity: High if waste covers >20% of frame, Medium if 10-20%, Low if <10%
-- priority: High for spills (hazardous), Medium for garbage, Low for bin
+- severity: High if waste covers >20% of frame, Medium if 5-20%, Low if <5%
+- priority: High for garbage, Medium for bin, Low for spills
+- severity and priority should NOT both be Low unless the detection is extremely minor — if one is Low the other should be at least Medium
 - department: "spill" only for liquid spills, "cleaning" for everything else`
             }
           ]
@@ -94,6 +95,11 @@ Rules:
     if (!validLevels.includes(result.priority)) result.priority = 'Low';
     if (!validDepts.includes(result.department)) result.department = 'cleaning';
 
+    // Ensure severity and priority are never both Low
+    if (result.severity === 'Low' && result.priority === 'Low') {
+      result.priority = 'Medium';
+    }
+
     console.log(`🤖 Groq for "${detectedClass}": ${result.confirmed ? '✅' : '❌'} | class=${result.detectedClass} severity=${result.severity} priority=${result.priority} dept=${result.department} | ${result.reason}`);
 
     return res.json({ success: true, ...result });
@@ -112,18 +118,18 @@ const calculateSeverity = (width, height, frameHeight, frameWidth) => {
   const coveragePercentage = (detectionArea / frameArea) * 100;
 
   if (coveragePercentage >= 20) return "High";
-  if (coveragePercentage >= 10) return "Medium";
+  if (coveragePercentage >= 5) return "Medium";
   return "Low";
 };
 
 const calculatePriority = (className, severity) => {
   const classPriority = {
-    spills: "High",
-    garbage: "Medium",
-    bin: "Low"
+    spills: "Low",
+    garbage: "High",
+    bin: "Medium"
   };
 
-  const basePriority = classPriority[className.toLowerCase()] || "Low";
+  const basePriority = classPriority[className.toLowerCase()] || "Medium";
   const priorityLevels = { High: 3, Medium: 2, Low: 1 };
 
   return priorityLevels[severity] > priorityLevels[basePriority] ? severity : basePriority;

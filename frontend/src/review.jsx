@@ -139,7 +139,7 @@ const ReviewDashboard = () => {
       const response = await axios.post(
         'https://api.groq.com/openai/v1/chat/completions',
         {
-          model: 'meta-llama/llama-4-maverick-17b-128e-instruct',
+          model: 'llama-3.1-8b-instant',
           messages: [
             {
               role: 'system',
@@ -164,13 +164,15 @@ const ReviewDashboard = () => {
       const responseContent = response.data.choices[0].message.content;
 
       try {
-        const parsedResponse = JSON.parse(responseContent);
+        // Strip markdown code fences if present (e.g. ```json ... ```)
+        const cleaned = responseContent.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
+        const parsedResponse = JSON.parse(cleaned);
         return {
           score: parsedResponse.score,
-          label: parsedResponse.label
+          label: parsedResponse.label?.toLowerCase()
         };
       } catch (parseError) {
-        console.error('Error parsing sentiment response:', parseError);
+        console.error('Error parsing sentiment response:', parseError, responseContent);
         return null;
       }
     } catch (error) {

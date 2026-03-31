@@ -11,9 +11,7 @@ import WorkerTaskPage from "./WorkerTaskPage";
 import { BarChart2, FileText, ShoppingBag, Map, Menu, X, HardHat, Camera, BarChart3, ClipboardList, CheckSquare } from "lucide-react";
 
 
-function Sidebar({ setActiveComponent }) {
-  const [isOpen, setIsOpen] = useState(false);
-
+function Sidebar({ isOpen, toggleSidebar, setActiveComponent }) {
   const menuItems = [
     { icon: BarChart2, text: "Charts", component: "Charts" },
     { icon: FileText, text: "Reports", component: "ApproveReport" },
@@ -26,37 +24,34 @@ function Sidebar({ setActiveComponent }) {
     { icon: CheckSquare, text: "Task Completion", component: "WorkerTasks" },
   ];
 
-  const toggleSidebar = () => setIsOpen((prev) => !prev);
   const handleItemClick = (componentName) => {
     setActiveComponent(componentName);
-    setIsOpen(false);
+    toggleSidebar(false);
   };
 
   return (
-    <div>
-      {/* Hamburger Button */}
-      <button
-        onClick={toggleSidebar}
-        className="md:hidden p-2 m-2 bg-gray-800 text-white rounded-lg focus:outline-none"
-      >
-        <Menu className="w-6 h-6" />
-      </button>
+    <>
+      {/* Backdrop overlay for mobile */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-40 md:hidden"
+          onClick={() => toggleSidebar(false)}
+        />
+      )}
 
-      {/* Sidebar */}
+      {/* Sidebar — fixed on mobile, static in flex on desktop */}
       <div
-        className={`fixed inset-y-0 left-0 bg-black border-r border-gray-700 shadow-lg p-4 transition-transform duration-300 
-          ${isOpen ? "translate-x-0" : "-translate-x-full"
-          } md:translate-x-0 w-64 md:relative md:block h-screen`}
+        className={`fixed inset-y-0 left-0 z-50 bg-black border-r border-gray-700 shadow-lg p-4 transition-transform duration-300 w-64 h-screen
+          md:static md:z-auto md:translate-x-0 md:flex md:flex-col md:shrink-0
+          ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        {/* Close Button */}
-        {isOpen && (
-          <button
-            onClick={toggleSidebar}
-            className="absolute top-4 right-4 p-2 text-red-500 hover:text-red-700"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        )}
+        {/* Close Button (mobile only) */}
+        <button
+          onClick={() => toggleSidebar(false)}
+          className="md:hidden absolute top-4 right-4 p-2 text-red-500 hover:text-red-700"
+        >
+          <X className="w-6 h-6" />
+        </button>
 
         <nav>
           <ul className="space-y-4 mt-8">
@@ -74,18 +69,32 @@ function Sidebar({ setActiveComponent }) {
           </ul>
         </nav>
       </div>
-    </div>
+    </>
   );
 }
 
 const AdminDashboard = () => {
   const [activeComponent, setActiveComponent] = useState("Charts");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <div className="bg-black flex min-h-screen">
-      <Sidebar setActiveComponent={setActiveComponent} />
-      <div className="flex-1 flex flex-col bg-black">
-        <main className="flex-1 bg-black text-white px-8 py-6">
+      <Sidebar
+        isOpen={sidebarOpen}
+        toggleSidebar={setSidebarOpen}
+        setActiveComponent={setActiveComponent}
+      />
+      <div className="flex-1 flex flex-col bg-black min-w-0">
+        {/* Hamburger — only visible on mobile, sits above content */}
+        <div className="md:hidden p-2">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 bg-gray-800 text-white rounded-lg focus:outline-none"
+          >
+            <Menu className="w-6 h-6" />
+          </button>
+        </div>
+        <main className="flex-1 bg-black text-white px-4 md:px-8 py-6">
           {activeComponent === "Charts" && <Charts />}
           {activeComponent === "ApproveReport" && <ApproveReport />}
           {activeComponent === "Marketplace" && <CreateListing />}

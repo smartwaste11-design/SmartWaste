@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as ort from 'onnxruntime-web';
-import { Camera, Activity, CheckCircle, Clock } from 'lucide-react';
+import { Camera, Activity, CheckCircle, Clock, Wifi, WifiOff, Video } from 'lucide-react';
+import Hls from 'hls.js';
 import { useCameraContext } from './CameraContext';
 
 export default function AdminCameraPage() {
@@ -9,6 +10,14 @@ export default function AdminCameraPage() {
     const [detections, setDetections] = useState([]);
     const [modelLoaded, setModelLoaded] = useState(false);
     const [error, setError] = useState(null);
+
+    // CCTV state
+    const [sourceMode, setSourceMode] = useState('webcam'); // 'webcam' | 'cctv'
+    const [cctvUrl, setCctvUrl] = useState('');
+    const [cctvConnected, setCctvConnected] = useState(false);
+    const [cctvConnecting, setCctvConnecting] = useState(false);
+    const hlsRef = useRef(null);
+
     const videoRef = useRef(null); // local display video
     const canvasRef = useRef(null);
     const sessionRef = useRef(null);
@@ -72,6 +81,97 @@ export default function AdminCameraPage() {
             setIsLoading(false);
             setModelLoaded(true);
         }
+    };
+
+    const connectCCTV = async () => {
+        if (!cctvUrl.trim()) {
+            setError('Please enter a valid CCTV stream URL.');
+            return;
+        }
+        setCctvConnecting(true);
+        setCctvConnected(true); // show video element immediately so it's in the DOM
+        setError(null);
+
+        // small delay to let React render the video element before attaching HLS
+        await new Promise(r => setTimeout(r, 50));
+
+        try {
+            const video = videoRef.current;
+            if (!video) {
+                setError('Video element not ready. Please try again.');
+                setCctvConnecting(false);
+                setCctvConnected(false);
+                return;
+            }
+
+            const isHLS = cctvUrl.includes('.m3u8');
+
+            if (isHLS && Hls.isSupported()) {
+                if (hlsRef.current) hlsRef.current.destroy();
+                const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+                hlsRef.current = hls;
+                hls.loadSource(cctvUrl);
+                hls.attachMedia(video);
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.play().catch(console.warn);
+                    setCctvConnecting(false);
+                    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+                    detectObjects();
+                });
+                hls.on(Hls.Events.ERROR, (_, data) => {
+                    if (data.fatal) {
+                        setError(`Stream error (${data.type}): ${data.details}. Check the URL and CORS policy.`);
+                        setCctvConnecting(false);
+                        setCctvConnected(false);
+                    }
+                });
+            } else if (isHLS && video.canPlayType('application/vnd.apple.mpegurl')) {
+                // Safari native HLS
+                video.src = cctvUrl;
+                video.addEventListener('loadedmetadata', () => {
+                    video.play().catch(console.warn);
+                    setCctvConnecting(false);
+                    detectObjects();
+                }, { once: true });
+                video.addEventListener('error', () => {
+                    setError('Failed to load HLS stream. Check the URL.');
+                    setCctvConnecting(false);
+                    setCctvConnected(false);
+                }, { once: true });
+            } else {
+                // Direct video URL (mp4, webm, mjpeg, etc.)
+                video.src = cctvUrl;
+                video.addEventListener('loadedmetadata', () => {
+                    video.play().catch(console.warn);
+                    setCctvConnecting(false);
+                    detectObjects();
+                }, { once: true });
+                video.addEventListener('error', () => {
+                    setError('Failed to load stream. For RTSP cameras, convert to HLS (.m3u8) using FFmpeg first.');
+                    setCctvConnecting(false);
+                    setCctvConnected(false);
+                }, { once: true });
+            }
+        } catch (err) {
+            setError('Connection failed: ' + err.message);
+            setCctvConnecting(false);
+            setCctvConnected(false);
+        }
+    };
+
+    const disconnectCCTV = () => {
+        if (hlsRef.current) {
+            hlsRef.current.destroy();
+            hlsRef.current = null;
+        }
+        if (videoRef.current) {
+            videoRef.current.pause();
+            videoRef.current.src = '';
+            videoRef.current.srcObject = null;
+        }
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        setCctvConnected(false);
+        setDetections([]);
     };
 
     const startCamera = async () => {
@@ -556,6 +656,8 @@ export default function AdminCameraPage() {
         }
     }, [modelLoaded]);
 
+    const isActive = cameraActive || cctvConnected;
+
     return (
         <div className="min-h-screen bg-black text-white p-6">
             {/* Header */}
@@ -574,14 +676,14 @@ export default function AdminCameraPage() {
                         <div>
                             <p className="text-gray-400 text-sm">Camera Status</p>
                             <p className="text-2xl font-bold mt-1">
-                                {cameraActive ? (
-                                    <span className="text-green-500">Active</span>
+                                {isActive ? (
+                                    <span className="text-green-500">{cctvConnected ? 'CCTV Live' : 'Active'}</span>
                                 ) : (
                                     <span className="text-gray-500">Inactive</span>
                                 )}
                             </p>
                         </div>
-                        <Activity className={`w-8 h-8 ${cameraActive ? 'text-green-500' : 'text-gray-600'}`} />
+                        <Activity className={`w-8 h-8 ${isActive ? 'text-green-500' : 'text-gray-600'}`} />
                     </div>
                 </div>
 
@@ -606,23 +708,85 @@ export default function AdminCameraPage() {
                 </div>
             </div>
 
-            {/* Camera Controls */}
-            <div className="mb-6">
-                {!cameraActive ? (
+            {/* Source Selector + Controls */}
+            <div className="mb-6 bg-neutral-900 border border-gray-800 rounded-lg p-4">
+                {/* Mode tabs */}
+                <div className="flex gap-2 mb-4">
                     <button
-                        onClick={startCamera}
-                        disabled={isLoading}
-                        className="bg-[#1E8449] hover:bg-[#27ae60] text-white px-6 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => { setSourceMode('webcam'); disconnectCCTV(); stopCamera(); }}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${sourceMode === 'webcam' ? 'bg-[#1E8449] text-white' : 'bg-neutral-800 text-gray-400 hover:text-white'}`}
                     >
-                        {isLoading ? 'Loading Model...' : 'Start Camera'}
+                        <Video className="w-4 h-4" /> Webcam
                     </button>
-                ) : (
                     <button
-                        onClick={stopCamera}
-                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+                        onClick={() => { setSourceMode('cctv'); stopCamera(); }}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${sourceMode === 'cctv' ? 'bg-[#1E8449] text-white' : 'bg-neutral-800 text-gray-400 hover:text-white'}`}
                     >
-                        Stop Camera
+                        <Wifi className="w-4 h-4" /> CCTV / IP Camera
                     </button>
+                </div>
+
+                {/* Webcam controls */}
+                {sourceMode === 'webcam' && (
+                    !cameraActive ? (
+                        <button
+                            onClick={startCamera}
+                            disabled={isLoading}
+                            className="bg-[#1E8449] hover:bg-[#27ae60] text-white px-6 py-3 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isLoading ? 'Loading Model...' : 'Start Camera'}
+                        </button>
+                    ) : (
+                        <button
+                            onClick={stopCamera}
+                            className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+                        >
+                            Stop Camera
+                        </button>
+                    )
+                )}
+
+                {/* CCTV controls */}
+                {sourceMode === 'cctv' && (
+                    <div className="space-y-3">
+                        <p className="text-gray-400 text-sm">
+                            Enter an HLS stream URL (<span className="text-gray-300">.m3u8</span>) from your CCTV DVR/NVR or IP camera proxy.
+                            RTSP streams must be converted to HLS first using FFmpeg or a media server.
+                        </p>
+                        <div className="flex gap-3">
+                            <input
+                                type="text"
+                                value={cctvUrl}
+                                onChange={(e) => setCctvUrl(e.target.value)}
+                                placeholder="http://your-camera-ip/stream/index.m3u8"
+                                disabled={cctvConnected}
+                                className="flex-1 bg-neutral-800 border border-gray-700 text-white placeholder-gray-500 px-4 py-2 rounded-lg focus:outline-none focus:border-[#1E8449] disabled:opacity-50"
+                            />
+                            {!cctvConnected ? (
+                                <button
+                                    onClick={connectCCTV}
+                                    disabled={cctvConnecting || isLoading}
+                                    className="flex items-center gap-2 bg-[#1E8449] hover:bg-[#27ae60] text-white px-5 py-2 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <Wifi className="w-4 h-4" />
+                                    {cctvConnecting ? 'Connecting...' : 'Connect'}
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={disconnectCCTV}
+                                    className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded-lg font-semibold transition-colors"
+                                >
+                                    <WifiOff className="w-4 h-4" /> Disconnect
+                                </button>
+                            )}
+                        </div>
+                        {cctvConnected && (
+                            <p className="text-green-400 text-sm flex items-center gap-1">
+                                <span className="w-2 h-2 bg-green-400 rounded-full inline-block animate-pulse" />
+                                Connected to CCTV stream
+                            </p>
+                        )}
+                    </div>
                 )}
             </div>
 
@@ -647,9 +811,9 @@ export default function AdminCameraPage() {
                             playsInline
                             muted
                             autoPlay
-                            style={{ display: cameraActive ? 'block' : 'none' }}
+                            style={{ display: isActive ? 'block' : 'none' }}
                         />
-                        {!cameraActive && (
+                        {!isActive && (
                             <div className="absolute inset-0 flex items-center justify-center">
                                 <div className="text-center text-gray-500">
                                     <Camera className="w-16 h-16 mx-auto mb-2" />
@@ -669,9 +833,9 @@ export default function AdminCameraPage() {
                         <canvas
                             ref={canvasRef}
                             className="w-full h-full object-cover"
-                            style={{ display: cameraActive ? 'block' : 'none' }}
+                            style={{ display: isActive ? 'block' : 'none' }}
                         />
-                        {!cameraActive && (
+                        {!isActive && (
                             <div className="absolute inset-0 flex items-center justify-center">
                                 <div className="text-center text-gray-500">
                                     <Activity className="w-16 h-16 mx-auto mb-2" />
